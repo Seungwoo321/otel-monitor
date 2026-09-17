@@ -14,6 +14,7 @@ let selected = null
 let filters = []        // [{key, val}]
 let hist = null
 let range = 'session'
+let following = true     // tail -f 처럼 새 항목을 자동으로 따라간다
 
 /* ---------- 포맷 ---------- */
 const nf = new Intl.NumberFormat('ko-KR')
@@ -295,6 +296,8 @@ function rowFor (c) {
   r.append(t, s, by, names, fw)
   r.addEventListener('click', () => {
     selected = c.id
+    following = false      // 특정 항목을 보는 중 — 새 항목이 와도 옮기지 않는다
+    syncFollow()
     renderStream()
     if (window.matchMedia('(max-width: 860px)').matches) {
       document.querySelector('.tab[data-pane="inspect"]').click()
@@ -721,6 +724,7 @@ document.querySelectorAll('.tab[data-pane]').forEach(tab => {
 $('#btnClear').addEventListener('click', async () => {
   await invoke('clear')
   captures = []; totals = {}; series = []; selected = null
+  following = true; syncFollow()
   renderAll()
 })
 
@@ -1070,6 +1074,29 @@ $('#sideReopen').addEventListener('click', () => {
 })
 
 
+/* ---------- 스트림 추적 ---------- */
+function syncFollow () {
+  const f = $('#followState')
+  f.classList.toggle('paused', !following)
+  $('#followText').textContent = following ? '추적 중' : '멈춤'
+  f.title = following
+    ? '새 항목을 자동으로 따라갑니다'
+    : '특정 항목을 보는 중입니다. "최신으로" 를 누르면 다시 따라갑니다.'
+  $('#btnResume').hidden = following
+}
+
+function resumeFollow () {
+  following = true
+  const vis = visible()
+  selected = vis.length ? vis[vis.length - 1].id : null
+  syncFollow()
+  renderStream()
+  renderInspector()
+}
+
+$('#btnResume').addEventListener('click', resumeFollow)
+$('#followState').addEventListener('click', () => { if (!following) resumeFollow() })
+
 /* ---------- 상단바 ---------- */
 $('#btnCards').addEventListener('click', (e) => {
   e.stopPropagation()
@@ -1105,6 +1132,10 @@ $('#btnSettings').addEventListener('click', () => {
 /* ---------- 부트 ---------- */
 function renderAll () {
   refreshFilterOptions(); renderChips()
+  if (following) {
+    const vis = visible()
+    selected = vis.length ? vis[vis.length - 1].id : null
+  }
   renderStats(); renderLeakBar(); renderStream(); renderInspector()
   if (!$('#paneChart').hidden) renderCharts()
 }
@@ -1112,6 +1143,7 @@ function renderAll () {
 listen('otlp-capture', (e) => {
   captures.push(e.payload)
   if (captures.length > 500) captures.shift()
+  if (following && matches(e.payload)) selected = e.payload.id
   invoke('snapshot').then(s => {
     totals = s.totals; series = s.series
     renderAll()
@@ -1134,6 +1166,7 @@ invoke('snapshot').then(s => {
   $('#cfgUp').value = s.cfg.upstream
   $('#cfgFwd').checked = s.cfg.forward_enabled
   loadCardPrefs()
+  syncFollow()
   loadSettingsPaths()
   syncFwdWarn()
   try { sideCollapsed = localStorage.getItem('otel-side-collapsed') === '1' } catch (e) {}

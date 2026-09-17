@@ -287,7 +287,21 @@
   .streambar .sbinfo {
     font-family: var(--mono); font-size: 11px; color: var(--text-3);
   }
-  .streambar button { margin-left: auto; padding: 3px 10px; font-size: 11.5px; }
+  .streambar button { padding: 3px 10px; font-size: 11.5px; }
+  .streambar #btnClear { margin-left: auto; }
+  .streambar .follow {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10.5px; color: var(--accent);
+  }
+  .streambar .follow i {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent); flex: none;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  .streambar .follow.paused { color: var(--text-3); }
+  .streambar .follow.paused i { background: var(--text-3); animation: none; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+  @media (prefers-reduced-motion: reduce) { .streambar .follow i { animation: none } }
 
   /* ---- capture rows ---- */
   .row {
@@ -481,6 +495,10 @@
 
     <div class="streambar">
       <span class="sbinfo" id="streamCount"></span>
+      <span class="follow" id="followState" title="새 항목을 자동으로 따라갑니다">
+        <i></i><span id="followText">추적 중</span>
+      </span>
+      <button id="btnResume" type="button" hidden>최신으로</button>
       <button id="btnClear" type="button">비우기</button>
     </div>
 
