@@ -195,12 +195,12 @@
   main { flex: 1; display: grid; grid-template-columns: 1fr 5px var(--side-w, 380px); overflow: hidden; }
   /* 좁은 화면에서는 인스펙터를 옆에 두지 못하므로 탭으로 전환해 본다.
      숨기기만 하면 상세를 볼 방법이 사라진다. */
+  .tab.narrow-only { display: none; }
   @media (max-width: 860px) {
     main { grid-template-columns: 1fr; }
     #side, #splitter { display: none; }
     .tab.narrow-only { display: block; }
   }
-  .tab.narrow-only { display: none; }
 
   .col { display: flex; flex-direction: column; overflow: hidden; }
 
@@ -283,6 +283,20 @@
   .lg { display: inline-flex; align-items: center; gap: 6px;
         font-family: var(--mono); font-size: 10.5px; color: var(--text-3); }
   .lg i { width: 13px; height: 2px; border-radius: 1px; flex: none; }
+
+  /* 좁은 화면 인스펙터 상단의 돌아가기 바 */
+  .backbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px; border-bottom: 1px solid var(--line);
+    background: var(--panel); position: sticky; top: 0; z-index: 2;
+  }
+  .backbar .ttl {
+    font-family: var(--mono); font-size: 11px; color: var(--text-3);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .backbar button {
+    margin-left: auto; padding: 3px 9px; font-size: 12px; line-height: 1.4;
+  }
 
   .plot { position: relative; }
   .tip {

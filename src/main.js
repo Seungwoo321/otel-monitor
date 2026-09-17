@@ -265,10 +265,32 @@ function inspectorBox () {
     : $('#inspector')
 }
 
+function closeInspector () {
+  selected = null
+  const tab = document.querySelector('.tab[data-pane="stream"]')
+  if (tab) tab.click()
+  renderInspector()
+}
+
 function renderInspector () {
   const box = inspectorBox()
+  const narrow = box.id === 'paneInspect'
   box.textContent = ''
   const c = captures.find(x => x.id === selected)
+
+  // 좁은 화면에서는 인스펙터가 스트림을 덮으므로 돌아가는 길을 함께 둔다
+  if (narrow) {
+    const bar = el('div', 'backbar')
+    const t = el('span', 'ttl')
+    t.textContent = c ? `${c.ts} · ${c.signal}` : '선택된 항목 없음'
+    const x = el('button'); x.type = 'button'
+    x.textContent = '✕ 닫기'
+    x.title = '수신 스트림으로 돌아가기 (Esc)'
+    x.addEventListener('click', closeInspector)
+    bar.append(t, x)
+    box.append(bar)
+  }
+
   if (!c) {
     const e = el('div', 'empty'); e.textContent = '행을 선택하면 상세가 표시됩니다.'
     box.append(e); return
@@ -900,6 +922,11 @@ try {
 } catch (e) {
   window.addEventListener('resize', layoutStats)
 }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return
+  if (!$('#paneInspect').hidden) closeInspector()
+})
 
 /* ---------- 부트 ---------- */
 function renderAll () {
