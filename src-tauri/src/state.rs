@@ -61,7 +61,12 @@ pub struct Totals {
 pub struct Point {
     pub ts: String,
     pub tokens: f64,
+    pub tokens_in: f64,
+    pub tokens_out: f64,
     pub cost: f64,
+    pub active: f64,
+    pub added: f64,
+    pub removed: f64,
 }
 
 /// cumulative 메트릭의 시리즈별 최신값.
@@ -220,7 +225,12 @@ impl AppState {
             let pt = Point {
                 ts: cap.ts.clone(),
                 tokens: t.tokens_in + t.tokens_out,
+                tokens_in: t.tokens_in,
+                tokens_out: t.tokens_out,
                 cost: t.cost_usd,
+                active: t.active_seconds,
+                added: t.lines_added,
+                removed: t.lines_removed,
             };
             let mut s = self.series.write();
             s.push(pt);

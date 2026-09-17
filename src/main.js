@@ -223,7 +223,15 @@ function rowFor (c) {
   else { fw.classList.add('off'); fw.textContent = '—' }
 
   r.append(t, s, by, names, fw)
-  r.addEventListener('click', () => { selected = c.id; renderStream(); renderInspector() })
+  r.addEventListener('click', () => {
+    selected = c.id
+    renderStream()
+    if (window.matchMedia('(max-width: 860px)').matches) {
+      document.querySelector('.tab[data-pane="inspect"]').click()
+    } else {
+      renderInspector()
+    }
+  })
   return r
 }
 
@@ -250,8 +258,15 @@ function sec (title) {
   return s
 }
 
+function inspectorBox () {
+  // 좁은 화면에서는 사이드 패널이 숨겨지므로 탭 쪽에 그린다
+  return window.matchMedia('(max-width: 860px)').matches
+    ? $('#paneInspect')
+    : $('#inspector')
+}
+
 function renderInspector () {
-  const box = $('#inspector')
+  const box = inspectorBox()
   box.textContent = ''
   const c = captures.find(x => x.id === selected)
   if (!c) {
@@ -332,109 +347,304 @@ function renderInspector () {
 }
 
 /* ---------- 차트 ---------- */
-function drawChart (svgId, key, color) {
-  const svg = $(svgId)
-  svg.textContent = ''
-  const W = 600, H = 180, P = { t: 10, r: 52, b: 22, l: 10 }
-  const pts = (range === 'session' ? series : histSeries(parseInt(range, 10))).slice(-120)
-
-  const cs = getComputedStyle(document.documentElement)
-  const gridC = cs.getPropertyValue('--line').trim() || '#262c35'
-  const textC = cs.getPropertyValue('--text-3').trim() || '#6f7885'
-  const NS = 'http://www.w3.org/2000/svg'
-  const mk = (n, a) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e }
-
-  if (pts.length < 2) {
-    const t = mk('text', { x: W / 2, y: H / 2, 'text-anchor': 'middle', fill: textC, 'font-size': '12', 'font-family': 'monospace' })
-    t.textContent = '데이터를 모으는 중입니다'
-    svg.append(t); return
-  }
-
-  const vals = pts.map(p => p[key])
-  const max = Math.max(...vals, 1)
-  const iw = W - P.l - P.r, ih = H - P.t - P.b
-  const X = (i) => P.l + (i / (pts.length - 1)) * iw
-  const Y = (v) => P.t + ih - (v / max) * ih
-
-  // 그리드 + 눈금 라벨
-  for (let g = 0; g <= 3; g++) {
-    const v = (max / 3) * g
-    const y = Y(v)
-    svg.append(mk('line', { x1: P.l, y1: y, x2: P.l + iw, y2: y, stroke: gridC, 'stroke-width': '1' }))
-    const lb = mk('text', { x: P.l + iw + 6, y: y + 3.5, fill: textC, 'font-size': '10', 'font-family': 'monospace' })
-    lb.textContent = key === 'cost' ? '$' + v.toFixed(3) : fmtN(v)
-    svg.append(lb)
-  }
-
-  const area = pts.map((p, i) => `${X(i)},${Y(p[key])}`).join(' ')
-  svg.append(mk('polygon', {
-    points: `${P.l},${P.t + ih} ${area} ${P.l + iw},${P.t + ih}`,
-    fill: color, opacity: '0.13'
-  }))
-  svg.append(mk('polyline', {
-    points: area, fill: 'none', stroke: color, 'stroke-width': '1.8',
-    'stroke-linejoin': 'round'
-  }))
-  // 끝점 강조
-  const lx = X(pts.length - 1), ly = Y(vals[vals.length - 1])
-  svg.append(mk('circle', { cx: lx, cy: ly, r: '3', fill: color }))
-
-  // 시간 라벨
-  const first = mk('text', { x: P.l, y: H - 6, fill: textC, 'font-size': '10', 'font-family': 'monospace' })
-  first.textContent = pts[0].ts
-  const last = mk('text', { x: P.l + iw, y: H - 6, fill: '#6f7885', 'font-size': '10', 'font-family': 'monospace', 'text-anchor': 'end' })
-  last.textContent = pts[pts.length - 1].ts
-  svg.append(first, last)
+const NS = 'http://www.w3.org/2000/svg'
+const mk = (n, a) => {
+  const e = document.createElementNS(NS, n)
+  for (const k in a) e.setAttribute(k, a[k])
+  return e
 }
 
-function histSeries (days) {
+/** 시리즈 색은 테마 토큰에서 읽는다 — 라이트/다크 양쪽에서 검증된 값만 쓴다. */
+function palette () {
+  const cs = getComputedStyle(document.documentElement)
+  const g = (n, f) => cs.getPropertyValue(n).trim() || f
+  return {
+    accent: g('--accent', '#35b5ac'),
+    accent2: g('--accent-2', '#7fd8d2'),
+    warn: g('--warn', '#d19a4a'),
+    danger: g('--danger', '#d4604f'),
+    ok: g('--ok', '#4ea86a'),
+    grid: g('--line', '#262c35'),
+    ink3: g('--text-3', '#6f7885')
+  }
+}
+
+/** 원본 데이터에서 차트용 시리즈를 만든다. */
+function chartData () {
+  if (range === 'session') {
+    return series.map(p => ({
+      ts: p.ts,
+      tokens_in: p.tokens_in ?? 0,
+      tokens_out: p.tokens_out ?? 0,
+      tokens: p.tokens,
+      cost: p.cost,
+      active: p.active ?? 0,
+      added: p.added ?? 0,
+      removed: p.removed ?? 0
+    }))
+  }
+  const days = parseInt(range, 10)
   if (!hist || !hist.days) return []
   const cutoff = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
+  const acctFilter = filters.filter(f => f.key === 'user.email').map(f => f.val)
   const out = []
   for (const date of Object.keys(hist.days).sort()) {
     if (date < cutoff) continue
-    let tokens = 0, cost = 0
+    const row = { ts: date.slice(5), tokens_in: 0, tokens_out: 0, cost: 0, active: 0, added: 0, removed: 0 }
     for (const [acct, st] of Object.entries(hist.days[date])) {
-      if (filters.length && !filters.every(f => f.key !== 'user.email' || f.val === acct)) continue
-      tokens += (st.tokens_in || 0) + (st.tokens_out || 0)
-      cost += st.cost_usd || 0
+      if (acctFilter.length && !acctFilter.includes(acct)) continue
+      row.tokens_in += st.tokens_in || 0
+      row.tokens_out += st.tokens_out || 0
+      row.cost += st.cost_usd || 0
+      row.active += st.active_seconds || 0
+      row.added += st.lines_added || 0
+      row.removed += st.lines_removed || 0
     }
-    out.push({ ts: date.slice(5), tokens, cost })
+    row.tokens = row.tokens_in + row.tokens_out
+    out.push(row)
   }
   return out
 }
 
-function renderCharts () {
-  const cs = getComputedStyle(document.documentElement)
-  const accent = cs.getPropertyValue('--accent').trim() || '#35b5ac'
-  const warn = cs.getPropertyValue('--warn').trim() || '#d19a4a'
-  drawChart('#chartTokens', 'tokens', accent)
-  drawChart('#chartCost', 'cost', warn)
+/**
+ * 면적/선 차트 하나를 그린다.
+ *
+ * pts   : [{ts, ...}]
+ * specs : [{key, name, color}] — 한 차트의 시리즈들
+ * fmt   : 값 포맷터
+ */
+function drawChart (svgId, pts, specs, fmt, opts = {}) {
+  const svg = $(svgId)
+  const host = svg.parentElement
+  svg.textContent = ''
+  host.querySelector('.tip')?.remove()
 
-  const t = totals
+  const vb = svg.getAttribute('viewBox').split(' ').map(Number)
+  const W = vb[2], H = vb[3]
+  const P = { t: 12, r: 58, b: 22, l: 12 }
+  const p = palette()
+
+  if (pts.length < 2) {
+    const t = mk('text', {
+      x: W / 2, y: H / 2, 'text-anchor': 'middle',
+      fill: p.ink3, 'font-size': '11.5', 'font-family': 'monospace'
+    })
+    t.textContent = range === 'session' ? '데이터를 모으는 중입니다' : '이 기간에 기록이 없습니다'
+    svg.append(t)
+    return
+  }
+
+  const iw = W - P.l - P.r, ih = H - P.t - P.b
+  let max = 0
+  for (const s of specs) for (const d of pts) max = Math.max(max, d[s.key] || 0)
+  if (opts.symmetric) { /* 증감 차트는 0 기준 양방향 */ }
+  if (max <= 0) max = 1
+
+  const X = i => P.l + (pts.length === 1 ? iw / 2 : (i / (pts.length - 1)) * iw)
+  const Y = v => P.t + ih - (v / max) * ih
+
+  // 그리드 + 눈금 (모든 라벨이 실제 도달하는 값)
+  for (let g = 0; g <= 3; g++) {
+    const v = (max / 3) * g
+    const y = Y(v)
+    svg.append(mk('line', { x1: P.l, y1: y, x2: P.l + iw, y2: y, stroke: p.grid, 'stroke-width': 1 }))
+    const lb = mk('text', {
+      x: P.l + iw + 7, y: y + 3.5, fill: p.ink3,
+      'font-size': '10', 'font-family': 'monospace'
+    })
+    lb.textContent = fmt(v, true)
+    svg.append(lb)
+  }
+
+  // 시리즈
+  for (const sp of specs) {
+    const path = pts.map((d, i) => `${X(i)},${Y(d[sp.key] || 0)}`).join(' ')
+    if (specs.length === 1) {
+      svg.append(mk('polygon', {
+        points: `${P.l},${P.t + ih} ${path} ${P.l + iw},${P.t + ih}`,
+        fill: sp.color, opacity: 0.12
+      }))
+    }
+    svg.append(mk('polyline', {
+      points: path, fill: 'none', stroke: sp.color,
+      'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round'
+    }))
+    const li = pts.length - 1
+    svg.append(mk('circle', { cx: X(li), cy: Y(pts[li][sp.key] || 0), r: 3, fill: sp.color }))
+  }
+
+  // x 축 양끝 라벨
+  const t0 = mk('text', { x: P.l, y: H - 5, fill: p.ink3, 'font-size': '10', 'font-family': 'monospace' })
+  t0.textContent = pts[0].ts
+  const t1 = mk('text', {
+    x: P.l + iw, y: H - 5, fill: p.ink3, 'font-size': '10',
+    'font-family': 'monospace', 'text-anchor': 'end'
+  })
+  t1.textContent = pts[pts.length - 1].ts
+  svg.append(t0, t1)
+
+  // ---- 호버: 크로스헤어 + 툴팁 ----
+  const hair = mk('line', {
+    y1: P.t, y2: P.t + ih, stroke: p.ink3, 'stroke-width': 1,
+    'stroke-dasharray': '3 3', opacity: 0
+  })
+  svg.append(hair)
+  const dots = specs.map(sp => {
+    const c = mk('circle', { r: 4, fill: sp.color, stroke: 'var(--panel)', 'stroke-width': 2, opacity: 0 })
+    svg.append(c)
+    return c
+  })
+
+  const tip = el('div', 'tip')
+  host.append(tip)
+
+  const hit = mk('rect', { x: 0, y: 0, width: W, height: H, fill: 'transparent' })
+  svg.append(hit)
+
+  const show = (clientX) => {
+    const r = svg.getBoundingClientRect()
+    const rel = (clientX - r.left) / r.width * W          // viewBox 좌표로 환산
+    let idx = Math.round(((rel - P.l) / iw) * (pts.length - 1))
+    idx = Math.max(0, Math.min(pts.length - 1, idx))
+    const d = pts[idx]
+    const x = X(idx)
+
+    hair.setAttribute('x1', x); hair.setAttribute('x2', x); hair.setAttribute('opacity', 0.55)
+    specs.forEach((sp, k) => {
+      dots[k].setAttribute('cx', x)
+      dots[k].setAttribute('cy', Y(d[sp.key] || 0))
+      dots[k].setAttribute('opacity', 1)
+    })
+
+    tip.textContent = ''
+    const dt = el('div', 'tdate'); dt.textContent = d.ts
+    tip.append(dt)
+    for (const sp of specs) {
+      const row = el('div', 'trow')
+      const i = el('i'); i.style.background = sp.color
+      const n = el('span', 'tname'); n.textContent = sp.name
+      const v = el('span', 'tval'); v.textContent = fmt(d[sp.key] || 0)
+      row.append(i, n, v); tip.append(row)
+    }
+    tip.classList.add('on')
+
+    // 화면 밖으로 나가지 않게
+    const px = (x / W) * r.width
+    const tw = tip.offsetWidth || 130
+    tip.style.left = Math.max(4, Math.min(r.width - tw - 4, px + 12)) + 'px'
+    tip.style.top = '6px'
+  }
+  const hide = () => {
+    hair.setAttribute('opacity', 0)
+    dots.forEach(c => c.setAttribute('opacity', 0))
+    tip.classList.remove('on')
+  }
+
+  svg.addEventListener('pointermove', e => show(e.clientX))
+  svg.addEventListener('pointerleave', hide)
+  svg.addEventListener('pointerdown', e => show(e.clientX))
+}
+
+function renderLegend (id, specs) {
+  const box = $(id)
+  if (!box) return
+  box.textContent = ''
+  for (const sp of specs) {
+    const l = el('span', 'lg')
+    const i = el('i'); i.style.background = sp.color
+    const t = document.createElement('span'); t.textContent = sp.name
+    l.append(i, t); box.append(l)
+  }
+}
+
+const fmtTok = (v, axis) => axis
+  ? (v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'K' : Math.round(v))
+  : fmtN(v)
+const fmtCost = (v) => '$' + (v || 0).toFixed(4)
+const fmtCostAxis = (v) => '$' + (v || 0).toFixed(v >= 1 ? 1 : 2)
+const fmtSec = (v, axis) => axis ? (v >= 3600 ? (v / 3600).toFixed(1) + 'h' : Math.round(v / 60) + 'm') : fmtDur(v)
+const fmtLines = (v, axis) => axis ? (v >= 1000 ? (v / 1000).toFixed(1) + 'K' : Math.round(v)) : fmtN(v)
+
+function renderCharts () {
+  const p = palette()
+  const pts = chartData()
+
+  const tokenSpecs = [
+    { key: 'tokens_in', name: 'input', color: p.accent },
+    { key: 'tokens_out', name: 'output', color: p.accent2 }
+  ]
+  const hasSplit = pts.some(d => d.tokens_in > 0 || d.tokens_out > 0)
+  const tSpecs = hasSplit ? tokenSpecs : [{ key: 'tokens', name: '토큰', color: p.accent }]
+  renderLegend('#legTokens', tSpecs.length > 1 ? tSpecs : [])
+  drawChart('#chartTokens', pts, tSpecs, fmtTok)
+
+  drawChart('#chartCost', pts, [{ key: 'cost', name: '비용', color: p.warn }],
+    (v, axis) => axis ? fmtCostAxis(v) : fmtCost(v))
+
+  drawChart('#chartActive', pts, [{ key: 'active', name: '활동', color: p.ok }], fmtSec)
+
+  const lineSpecs = [
+    { key: 'added', name: '추가', color: p.ok },
+    { key: 'removed', name: '삭제', color: p.danger }
+  ]
+  renderLegend('#legLines', lineSpecs)
+  drawChart('#chartLines', pts, lineSpecs, fmtLines)
+
+  // 요약
+  const last = pts[pts.length - 1] || {}
+  const sum = (k) => pts.reduce((a, d) => a + (d[k] || 0), 0)
+  $('#sumTokens').textContent = range === 'session'
+    ? `현재 ${fmtN(last.tokens || 0)}` : `합계 ${fmtN(sum('tokens_in') + sum('tokens_out'))}`
+  $('#sumCost').textContent = range === 'session'
+    ? `현재 ${fmtCost(last.cost || 0)}` : `합계 ${fmtCost(sum('cost'))}`
+  $('#sumActive').textContent = range === 'session'
+    ? `현재 ${fmtDur(last.active || 0)}` : `합계 ${fmtDur(sum('active'))}`
+  $('#sumLines').textContent = range === 'session'
+    ? `+${fmtN(last.added || 0)} −${fmtN(last.removed || 0)}`
+    : `+${fmtN(sum('added'))} −${fmtN(sum('removed'))}`
+
+  // 토큰 구성
+  const t = computeTotals()
   const box = $('#tokenBreak')
   box.textContent = ''
-  const rows = [
-    ['input', t.tokens_in], ['output', t.tokens_out],
-    ['cacheRead', t.tokens_cache_read], ['cacheCreation', t.tokens_cache_creation]
-  ]
-  for (const [k, v] of rows) {
+  for (const [k, v] of [['input', t.tokens_in], ['output', t.tokens_out],
+    ['cacheRead', t.tokens_cache_read], ['cacheCreation', t.tokens_cache_creation]]) {
     const r = el('div', 'mrow')
     const n = el('div', 'n'); n.textContent = k
     const val = el('div', 'v'); val.textContent = fmtN(v)
     r.append(n, val); box.append(r)
   }
-}
 
-document.querySelectorAll('#rangeSeg button').forEach(b => {
-  b.addEventListener('click', async () => {
-    document.querySelectorAll('#rangeSeg button').forEach(x => x.classList.remove('on'))
-    b.classList.add('on')
-    range = b.dataset.range
-    if (range !== 'session') { try { hist = await invoke('history') } catch (e) { hist = null } }
-    renderCharts()
-  })
-})
+  // 계정별 (이력이 있을 때만)
+  const ab = $('#acctBreak')
+  ab.textContent = ''
+  const acc = {}
+  if (hist && hist.days) {
+    const days = range === 'session' ? 1 : parseInt(range, 10)
+    const cutoff = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
+    for (const [date, accts] of Object.entries(hist.days)) {
+      if (range !== 'session' && date < cutoff) continue
+      for (const [a, st] of Object.entries(accts)) {
+        acc[a] = acc[a] || { tokens: 0, cost: 0 }
+        acc[a].tokens += (st.tokens_in || 0) + (st.tokens_out || 0)
+        acc[a].cost += st.cost_usd || 0
+      }
+    }
+  }
+  const entries = Object.entries(acc).sort((a, b) => b[1].tokens - a[1].tokens)
+  if (entries.length === 0) {
+    const e = el('div'); e.style.cssText = 'color:var(--text-3);font-size:12px'
+    e.textContent = '기록이 아직 없습니다.'
+    ab.append(e)
+  } else {
+    for (const [a, v] of entries) {
+      const r = el('div', 'mrow')
+      const n = el('div', 'n'); n.textContent = a
+      const val = el('div', 'v'); val.textContent = `${fmtN(v.tokens)} · ${fmtCost(v.cost)}`
+      r.append(n, val); ab.append(r)
+    }
+  }
+}
 
 /* ---------- 탭 ---------- */
 document.querySelectorAll('.tab[data-pane]').forEach(tab => {
@@ -445,7 +655,9 @@ document.querySelectorAll('.tab[data-pane]').forEach(tab => {
     $('#paneStream').hidden = p !== 'stream'
     $('#paneChart').hidden = p !== 'chart'
     $('#paneSetup').hidden = p !== 'setup'
+    $('#paneInspect').hidden = p !== 'inspect'
     if (p === 'chart') renderCharts()
+    if (p === 'inspect') renderInspector()
   })
 })
 
@@ -669,6 +881,19 @@ $('#btnUpd').addEventListener('click', async () => {
     btn.disabled = false
   }
 })
+
+try {
+  const mq = window.matchMedia('(max-width: 860px)')
+  const onWidthChange = () => {
+    // 넓어지면 인스펙터 탭에서 빠져나온다
+    if (!mq.matches && !$('#paneInspect').hidden) {
+      document.querySelector('.tab[data-pane="stream"]').click()
+    }
+    renderInspector()
+  }
+  if (mq.addEventListener) mq.addEventListener('change', onWidthChange)
+  else mq.addListener(onWidthChange)
+} catch (e) { /* 미지원 환경 */ }
 
 try {
   new ResizeObserver(layoutStats).observe($('#stats'))

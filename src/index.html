@@ -193,7 +193,14 @@
 
   /* ---- main split ---- */
   main { flex: 1; display: grid; grid-template-columns: 1fr 5px var(--side-w, 380px); overflow: hidden; }
-  @media (max-width: 860px) { main { grid-template-columns: 1fr; } #side, #splitter { display: none; } }
+  /* 좁은 화면에서는 인스펙터를 옆에 두지 못하므로 탭으로 전환해 본다.
+     숨기기만 하면 상세를 볼 방법이 사라진다. */
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; }
+    #side, #splitter { display: none; }
+    .tab.narrow-only { display: block; }
+  }
+  .tab.narrow-only { display: none; }
 
   .col { display: flex; flex-direction: column; overflow: hidden; }
 
@@ -262,8 +269,37 @@
   .mrow .v { color: var(--accent); font-variant-numeric: tabular-nums; flex: none; }
 
   /* ---- chart ---- */
-  .chartbox { padding: 12px 14px 4px; border-bottom: 1px solid var(--line); }
+  .chartbox { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
   svg { display: block; width: 100%; height: auto; }
+  .ctitle {
+    margin: 0 0 8px; font-size: 12.5px; font-weight: 600; color: var(--text-2);
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .csub {
+    font-family: var(--mono); font-size: 11.5px; color: var(--text-3);
+    font-weight: 400; margin-left: auto;
+  }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+  .lg { display: inline-flex; align-items: center; gap: 6px;
+        font-family: var(--mono); font-size: 10.5px; color: var(--text-3); }
+  .lg i { width: 13px; height: 2px; border-radius: 1px; flex: none; }
+
+  .plot { position: relative; }
+  .tip {
+    position: absolute; pointer-events: none; z-index: 5;
+    background: var(--panel); border: 1px solid var(--line-2);
+    border-radius: 6px; padding: 7px 9px; min-width: 116px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.35);
+    font-family: var(--mono); font-size: 11px;
+    opacity: 0; transition: opacity .09s ease;
+  }
+  .tip.on { opacity: 1; }
+  .tip .tdate { color: var(--text-3); margin-bottom: 5px; font-size: 10px; }
+  .tip .trow { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
+  .tip .trow i { width: 11px; height: 2px; border-radius: 1px; flex: none; }
+  .tip .tname { color: var(--text-3); }
+  .tip .tval { margin-left: auto; color: var(--text); font-weight: 500;
+               font-variant-numeric: tabular-nums; }
 
   /* ---- config ---- */
   .field { margin-bottom: 11px; }
@@ -338,6 +374,7 @@
       <div class="tab active" data-pane="stream">수신 스트림</div>
       <div class="tab" data-pane="chart">차트</div>
       <div class="tab" data-pane="setup">설정</div>
+      <div class="tab narrow-only" data-pane="inspect">인스펙터</div>
     </div>
 
     <div class="scroll" id="paneStream">
@@ -358,19 +395,41 @@
           <button data-range="90">90일</button>
         </div>
       </div>
+
       <div class="chartbox">
-        <h3 style="margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)">누적 토큰</h3>
-        <svg id="chartTokens" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+        <h3 class="ctitle">토큰 사용량<span class="csub" id="sumTokens"></span></h3>
+        <div class="legend" id="legTokens"></div>
+        <div class="plot"><svg id="chartTokens" viewBox="0 0 640 190" preserveAspectRatio="none"></svg></div>
       </div>
+
       <div class="chartbox">
-        <h3 style="margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)">누적 비용 (USD)</h3>
-        <svg id="chartCost" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+        <h3 class="ctitle">비용<span class="csub" id="sumCost"></span></h3>
+        <div class="plot"><svg id="chartCost" viewBox="0 0 640 170" preserveAspectRatio="none"></svg></div>
       </div>
+
+      <div class="chartbox">
+        <h3 class="ctitle">활동 시간<span class="csub" id="sumActive"></span></h3>
+        <div class="plot"><svg id="chartActive" viewBox="0 0 640 150" preserveAspectRatio="none"></svg></div>
+      </div>
+
+      <div class="chartbox">
+        <h3 class="ctitle">코드 변경<span class="csub" id="sumLines"></span></h3>
+        <div class="legend" id="legLines"></div>
+        <div class="plot"><svg id="chartLines" viewBox="0 0 640 150" preserveAspectRatio="none"></svg></div>
+      </div>
+
       <div class="sec">
-        <h3>토큰 내역</h3>
+        <h3>토큰 구성</h3>
         <div id="tokenBreak"></div>
       </div>
+
+      <div class="sec">
+        <h3>계정별 사용량</h3>
+        <div id="acctBreak"></div>
+      </div>
     </div>
+
+    <div class="scroll" id="paneInspect" hidden></div>
 
     <div class="scroll" id="paneSetup" hidden>
       <div class="sec">
