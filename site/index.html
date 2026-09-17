@@ -247,14 +247,14 @@
     <p class="sub">macOS 13+ · Universal (Intel &amp; Apple Silicon) · 무료 · 오픈소스</p>
 
     <div class="cta">
-      <a class="btn btn-primary" id="dl" href="https://github.com/Seungwoo321/otel-monitor/releases/latest/download/OTel-Monitor-0.1.0-universal.dmg">
+      <a class="btn btn-primary" id="dl" href="https://github.com/Seungwoo321/otel-monitor/releases/latest/download/OTel-Monitor-0.2.0-universal.dmg">
         ↓ macOS 다운로드
       </a>
       <a class="btn btn-ghost" href="https://github.com/Seungwoo321/otel-monitor">GitHub</a>
     </div>
 
     <div class="meta">
-      <span><b>v0.1.0</b></span>
+      <span><b>v0.2.0</b></span>
       <span>서명 · 공증 완료</span>
       <span>10.6 MB</span>
     </div>
@@ -270,22 +270,22 @@
   <section>
     <h2>텔레메트리는 조용히 나갑니다</h2>
     <p class="lede">
-      Claude Code 의 OpenTelemetry 를 켜면 사용량 메트릭이 주기적으로 전송됩니다.
-      다만 전송 내역이 로컬에 남지 않아, 무엇이 얼마나 나가는지 확인할 방법이 마땅치 않습니다.
+      Claude Code 의 OpenTelemetry 를 켜면 사용량 메트릭이 주기적으로 나갑니다.
+      그런데 전송 내역이 로컬에 남지 않아, 무엇이 얼마나 나가는지 알 방법이 없습니다.
     </p>
 
     <div class="facts">
       <div class="fact">
         <span class="ico">1</span>
-        <p>전송 성공·실패 <b>기록이 로컬에 남지 않습니다.</b></p>
+        <p>전송 성공·실패가 <b>로컬에 남지 않습니다.</b></p>
       </div>
       <div class="fact">
         <span class="ico">2</span>
-        <p>실패는 <code>claude --debug</code> 로만 드러나 <b>평소엔 알아채기 어렵습니다.</b></p>
+        <p>실패는 <code>claude --debug</code> 를 켜야 보여서 <b>평소엔 모르고 지나갑니다.</b></p>
       </div>
       <div class="fact">
         <span class="ico">3</span>
-        <p>설정을 바꿨을 때 <b>실제로 무엇이 달라지는지</b> 눈으로 볼 수 없습니다.</p>
+        <p>설정을 바꿔도 <b>뭐가 달라졌는지</b> 확인할 수 없습니다.</p>
       </div>
     </div>
   </section>
@@ -293,8 +293,8 @@
   <section>
     <h2>중간에 세워두고 들여다봅니다</h2>
     <p class="lede">
-      로컬에서 OTLP 를 받아 디코딩·기록한 뒤, 설정한 수집 서버로 바이트를 그대로 넘깁니다.
-      기존 수집을 끊지 않고 내용만 들여다볼 수 있습니다.
+      로컬에서 OTLP 를 받아 풀어본 뒤, 수집 서버로 받은 바이트를 그대로 넘깁니다.
+      기존 수집은 그대로 두고 내용만 봅니다.
     </p>
 
     <div class="flow">Claude Code
@@ -311,33 +311,46 @@
     <div class="grid">
       <div class="card alert">
         <h3><span class="dot"></span>내용 유출 감지</h3>
-        <p>프롬프트·응답 원문이나 도구 파라미터가 페이로드에 포함되면 알려줍니다.
-           로그 신호가 켜진 것도 함께 표시합니다.</p>
+        <p>프롬프트나 응답 원문, 도구 파라미터가 섞여 들어오면 알려줍니다.
+           로그 신호가 켜진 것도 같이 표시합니다.</p>
       </div>
       <div class="card">
         <h3><span class="dot"></span>실시간 수신 스트림</h3>
-        <p>요청 하나하나를 시각·크기·메트릭명·응답과 함께 보여줍니다.
-           선택하면 전체 속성을 펼쳐 봅니다.</p>
+        <p>요청 하나하나를 시각·크기·메트릭명과 함께 보여줍니다.
+           고르면 전체 속성이 펼쳐집니다.</p>
       </div>
       <div class="card">
         <h3><span class="dot"></span>개인 식별 정보 표시</h3>
-        <p><code>user.email</code>·<code>organization.id</code> 같은 식별 속성을
-           따로 색으로 구분해 드러냅니다.</p>
+        <p><code>user.email</code>·<code>organization.id</code> 같은 식별 속성은
+           색을 달리해 눈에 띄게 합니다.</p>
       </div>
       <div class="card">
-        <h3><span class="dot"></span>누적 통계와 차트</h3>
-        <p>토큰·비용·커밋·코드 변경·활동 시간을 집계하고 시계열로 그립니다.
-           cumulative 누계를 정확히 처리합니다.</p>
+        <h3><span class="dot"></span>차트와 툴팁</h3>
+        <p>토큰·비용·활동 시간·코드 변경을 시계열로 그립니다.
+           그래프에 마우스를 올리면 그 지점 값이 한 번에 보입니다.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>속성 필터</h3>
+        <p><code>user.email</code>·<code>unit</code>·<code>model</code> 등 원하는 속성으로
+           스트림·통계·차트를 한 번에 걸러냅니다.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>날짜별 기록</h3>
+        <p>날짜·계정별 합계를 남겨 7·30·90일 추이를 봅니다.
+           요청 원문은 저장하지 않습니다.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>자동 업데이트</h3>
+        <p>새 버전이 나오면 알려줍니다. 확인을 눌러야 받습니다.</p>
       </div>
       <div class="card">
         <h3><span class="dot"></span>설정 진단</h3>
-        <p><code>settings.json</code> 을 직접 읽어 내용 노출 키 6종이
-           켜져 있는지 확인해 줍니다.</p>
+        <p><code>settings.json</code> 을 읽어 내용 노출 키 6종이 켜져 있는지 확인합니다.</p>
       </div>
       <div class="card">
         <h3><span class="dot"></span>내보내기</h3>
         <p>수집한 캡처를 JSON·CSV 로 저장합니다.
-           데이터는 메모리에만 있고 외부로 나가지 않습니다.</p>
+           데이터는 이 기기를 벗어나지 않습니다.</p>
       </div>
     </div>
   </section>
@@ -371,13 +384,14 @@
 
     <div class="note">
       이미 수집 서버로 보내고 있다면 그 주소를 앱 설정의 <b>전달할 서버 주소</b> 에 넣으세요.
-      받은 내용을 그대로 넘깁니다. 앱을 꺼두면 그 구간은 전달되지 않습니다.
+      받은 내용을 그대로 넘깁니다. 비워두면 이 앱에서만 보고 끝납니다.
+      앱이 꺼져 있으면 그 구간은 전달되지 않습니다.
     </div>
   </section>
 
   <section>
     <h2>무엇이 잡히나</h2>
-    <p class="lede">Claude Code 가 내보내는 메트릭은 8종이 전부입니다. 전부 숫자입니다.</p>
+    <p class="lede">Claude Code 가 내보내는 메트릭은 이 8종이 전부입니다.</p>
     <div class="tw">
       <table>
         <thead><tr><th>메트릭</th><th>의미</th></tr></thead>
@@ -394,9 +408,9 @@
       </table>
     </div>
     <div class="note">
-      값은 숫자 집계이고 대화 내용은 포함되지 않습니다.
-      다만 로그인 상태에서는 <code>user.email</code>·<code>organization.id</code> 같은
-      식별 속성이 함께 붙습니다. 인스펙터가 이 속성들을 따로 표시해 줍니다.
+      숫자뿐이고 대화 내용은 없습니다.
+      다만 로그인 상태면 <code>user.email</code>·<code>organization.id</code> 가 같이 붙습니다.
+      인스펙터에서 따로 표시됩니다.
     </div>
   </section>
 
