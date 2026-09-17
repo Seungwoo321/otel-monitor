@@ -9,3 +9,4 @@ src-tauri/target/
 .env.*
 *.p8
 .vercel
+latest.json

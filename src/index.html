@@ -155,6 +155,38 @@
   .stat .v.warn   { color: var(--warn); }
   .stat .v.danger { color: var(--danger); }
 
+  /* ---- filter bar ---- */
+  .filterbar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 16px; background: var(--panel);
+    border-bottom: 1px solid var(--line); flex: none;
+  }
+  .filterbar .flabel {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--text-3);
+  }
+  .filterbar select {
+    font-family: var(--mono); font-size: 11.5px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--line-2); border-radius: 5px; padding: 4px 7px;
+    max-width: 210px;
+  }
+  .filterbar select:disabled { opacity: .45; }
+  .filterbar button { padding: 4px 10px; font-size: 11.5px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .fchip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px;
+    background: var(--accent-dim); color: var(--accent);
+    border: 1px solid var(--accent-dim); border-radius: 999px;
+    padding: 3px 5px 3px 10px;
+  }
+  .fchip button {
+    all: unset; cursor: pointer; padding: 0 5px;
+    color: var(--accent); font-size: 13px; line-height: 1;
+  }
+  .fchip button:hover { color: var(--text); }
+
   /* ---- main split ---- */
   main { flex: 1; display: grid; grid-template-columns: 1fr 5px var(--side-w, 380px); overflow: hidden; }
   @media (max-width: 860px) { main { grid-template-columns: 1fr; } #side, #splitter { display: none; } }
@@ -241,7 +273,12 @@
     background: var(--bg); color: var(--text);
     border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 8px;
   }
-  .field input:focus { outline: none; border-color: var(--accent); }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+  .field select {
+    width: 100%; font-family: var(--mono); font-size: 12px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 8px;
+  }
   .chk { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); }
   .hint { font-size: 11.5px; color: var(--text-3); line-height: 1.65; margin-top: 7px; }
   .hint code { font-family: var(--mono); color: var(--accent); font-size: 11px; }
@@ -282,6 +319,15 @@
 
 <div class="stats" id="stats"></div>
 
+<div class="filterbar" id="filterbar" hidden>
+  <span class="flabel">필터</span>
+  <select id="fKey"><option value="">속성 선택…</option></select>
+  <select id="fVal" disabled><option value="">값</option></select>
+  <button id="fAdd" type="button">추가</button>
+  <div class="chips" id="fChips"></div>
+  <button id="fClear" type="button" hidden>초기화</button>
+</div>
+
 <main>
   <div class="col">
     <div class="tabs">
@@ -300,6 +346,14 @@
     </div>
 
     <div class="scroll" id="paneChart" hidden>
+      <div class="chartbox" style="padding-bottom:12px">
+        <div class="segmented" id="rangeSeg">
+          <button data-range="session" class="on">이번 실행</button>
+          <button data-range="7">7일</button>
+          <button data-range="30">30일</button>
+          <button data-range="90">90일</button>
+        </div>
+      </div>
       <div class="chartbox">
         <h3 style="margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)">누적 토큰</h3>
         <svg id="chartTokens" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
@@ -328,6 +382,10 @@
         <div class="field">
           <label class="chk"><input type="checkbox" id="cfgFwd"> 받은 트래픽을 그대로 전달</label>
           <div class="hint">끄면 이 앱에서만 확인하고 원래 수집 서버에는 도달하지 않습니다.</div>
+          <div class="hint" id="fwdWarn" hidden
+               style="color:var(--warn);border-left:2px solid var(--warn);padding-left:9px">
+            전달이 켜져 있지만 서버 주소가 비어 있어 실제로는 전달되지 않습니다.
+          </div>
         </div>
         <button class="primary" id="btnSaveCfg">저장</button>
       </div>
@@ -345,8 +403,8 @@
       <div class="sec">
         <h3>Claude Code 연결</h3>
         <div class="hint">
-          Claude Code 설정 파일(<code>~/.claude/settings.json</code>)의
-          <code>env</code> 에 아래를 넣으면 모든 트래픽이 이 앱을 거칩니다.
+          Claude Code 설정 파일의 <code>env</code> 에 아래를 넣으면 모든 트래픽이 이 앱을 거칩니다.
+          경로는 <code>CLAUDE_CONFIG_DIR</code> 설정에 따라 다릅니다 — 아래 진단에서 찾아 줍니다.
         </div>
         <pre class="snip">"CLAUDE_CODE_ENABLE_TELEMETRY": "1",
 "OTEL_METRICS_EXPORTER": "otlp",
@@ -362,9 +420,34 @@
       </div>
 
       <div class="sec">
+        <h3>기록 보관</h3>
+        <div class="hint">
+          날짜별 사용량 합계만 저장합니다. 요청 원문은 저장하지 않습니다.
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label for="cfgRet">보관 기간 (일)</label>
+          <input type="number" id="cfgRet" min="1" max="3650" value="90">
+        </div>
+        <button id="btnRet">적용</button>
+        <button id="btnClearHist">기록 삭제</button>
+        <div class="hint" id="histPath" style="word-break:break-all"></div>
+      </div>
+
+      <div class="sec">
+        <h3>업데이트</h3>
+        <div class="hint" id="updStatus">현재 버전을 확인하세요.</div>
+        <button id="btnUpd" style="margin-top:8px">업데이트 확인</button>
+      </div>
+
+      <div class="sec">
         <h3>설정 진단</h3>
         <div class="field">
-          <input type="text" id="diagPath" value="~/.claude/settings.json">
+          <label for="diagSelect">찾은 설정 파일</label>
+          <select id="diagSelect"></select>
+        </div>
+        <div class="field">
+          <label for="diagPath">경로<span class="sub"> · 직접 입력할 수도 있습니다</span></label>
+          <input type="text" id="diagPath" placeholder="~/.claude/settings.json">
         </div>
         <button id="btnDiag">읽기</button>
         <div id="diagOut" class="diag" style="margin-top:10px"></div>

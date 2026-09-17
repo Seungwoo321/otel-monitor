@@ -9,6 +9,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
+use crate::history::HistoryStore;
 use crate::otlp::{Capture, ForwardResult};
 
 /// 메모리에 들고 있을 최대 캡처 수. 오래된 것부터 버린다.
@@ -74,6 +75,7 @@ pub struct AppState {
     pub totals: RwLock<Totals>,
     pub series: RwLock<Vec<Point>>,
     pub running: RwLock<bool>,
+    pub history: HistoryStore,
     seq: AtomicU64,
     http: reqwest::Client,
     handle: RwLock<Option<AppHandle>>,
@@ -88,6 +90,7 @@ impl AppState {
             totals: RwLock::new(Totals::default()),
             series: RwLock::new(Vec::new()),
             running: RwLock::new(false),
+            history: HistoryStore::new(),
             seq: AtomicU64::new(1),
             http: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(20))
@@ -235,6 +238,32 @@ impl AppState {
                 v.drain(0..drop);
             }
         }
+
+        // 일자별 집계에 반영 (계정은 user.email, 없으면 unit, 그것도 없으면 unknown)
+        let account = cap
+            .attrs
+            .iter()
+            .find(|(k, _)| k == "user.email")
+            .or_else(|| cap.attrs.iter().find(|(k, _)| k == "unit"))
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| "unknown".into());
+        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let rows: Vec<(String, String, f64)> = cap
+            .metrics
+            .iter()
+            .map(|m| {
+                let disc = m
+                    .attrs
+                    .iter()
+                    .filter(|(k, _)| k == "type" || k == "start_type")
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                (m.name.clone(), disc, m.value)
+            })
+            .collect();
+        self.history.record(&date, &account, &rows, &cap.leaks, &cap.ts);
+        self.history.flush();
 
         if let Some(h) = self.handle.read().as_ref() {
             let _ = h.emit("otlp-capture", &cap);

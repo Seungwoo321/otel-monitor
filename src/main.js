@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { save } from '@tauri-apps/plugin-dialog'
+import { check } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 
 const $ = (s) => document.querySelector(s)
 const el = (t, c) => { const e = document.createElement(t); if (c) e.className = c; return e }
@@ -9,6 +11,9 @@ let captures = []
 let totals = {}
 let series = []
 let selected = null
+let filters = []        // [{key, val}]
+let hist = null
+let range = 'session'
 
 /* ---------- 포맷 ---------- */
 const nf = new Intl.NumberFormat('ko-KR')
@@ -22,9 +27,107 @@ const fmtDur = (s) => {
   return `${Math.floor(s / 3600)}시 ${Math.floor((s % 3600) / 60)}분`
 }
 
+/* ---------- 필터 ---------- */
+function matches (c) {
+  return filters.every(f => c.attrs.some(([k, v]) => k === f.key && v === f.val))
+}
+function visible () { return captures.filter(matches) }
+
+function refreshFilterOptions () {
+  const bar = $('#filterbar')
+  bar.hidden = captures.length === 0
+  const keys = new Map()
+  for (const c of captures) {
+    for (const [k, v] of c.attrs) {
+      if (!keys.has(k)) keys.set(k, new Set())
+      keys.get(k).add(v)
+    }
+  }
+  const kSel = $('#fKey')
+  const cur = kSel.value
+  kSel.textContent = ''
+  const ph = document.createElement('option'); ph.value = ''; ph.textContent = '속성 선택…'
+  kSel.append(ph)
+  for (const k of [...keys.keys()].sort()) {
+    const o = document.createElement('option'); o.value = k; o.textContent = k
+    kSel.append(o)
+  }
+  if (keys.has(cur)) kSel.value = cur
+  fillValues(keys)
+  kSel.onchange = () => fillValues(keys)
+}
+
+function fillValues (keys) {
+  const k = $('#fKey').value
+  const vSel = $('#fVal')
+  vSel.textContent = ''
+  vSel.disabled = !k
+  if (!k) { const o = document.createElement('option'); o.textContent = '값'; vSel.append(o); return }
+  for (const v of [...keys.get(k)].sort()) {
+    const o = document.createElement('option'); o.value = v; o.textContent = v
+    vSel.append(o)
+  }
+}
+
+function renderChips () {
+  const box = $('#fChips')
+  box.textContent = ''
+  for (const f of filters) {
+    const c = el('span', 'fchip')
+    c.append(document.createTextNode(`${f.key}=${f.val}`))
+    const x = el('button'); x.type = 'button'; x.textContent = '×'
+    x.title = '제거'
+    x.addEventListener('click', () => {
+      filters = filters.filter(z => !(z.key === f.key && z.val === f.val))
+      renderAll()
+    })
+    c.append(x); box.append(c)
+  }
+  $('#fClear').hidden = filters.length === 0
+}
+
 /* ---------- 상단 통계 ---------- */
+function computeTotals () {
+  if (filters.length === 0) return totals
+  // 필터가 걸리면 보이는 캡처의 시리즈 최신값으로 다시 합산 (cumulative)
+  const latest = new Map()
+  let requests = 0, bytes = 0, leaks = 0, fails = 0
+  for (const c of visible()) {
+    requests++; bytes += c.bytes
+    if (c.leaks.length) leaks++
+    if (c.forwarded.kind === 'failed') fails++
+    const sess = (c.attrs.find(([k]) => k === 'session.id') || [])[1] || ''
+    for (const m of c.metrics) {
+      const disc = m.attrs.filter(([k]) => k === 'type' || k === 'start_type')
+        .map(([k, v]) => `${k}=${v}`).join(',')
+      latest.set(`${m.name}|${sess}|${disc}`, { v: m.value, disc })
+    }
+  }
+  const t = { requests, bytes, leak_events: leaks, forward_failures: fails,
+    tokens_in: 0, tokens_out: 0, tokens_cache_read: 0, tokens_cache_creation: 0,
+    cost_usd: 0, sessions: 0, commits: 0, prs: 0,
+    lines_added: 0, lines_removed: 0, active_seconds: 0 }
+  for (const [key, { v, disc }] of latest) {
+    const name = key.split('|')[0]
+    const kind = (disc.split(',').find(p => p.startsWith('type=')) || '').slice(5)
+    if (name === 'claude_code.token.usage') {
+      if (kind === 'input') t.tokens_in += v
+      else if (kind === 'output') t.tokens_out += v
+      else if (kind === 'cacheRead') t.tokens_cache_read += v
+      else if (kind === 'cacheCreation') t.tokens_cache_creation += v
+    } else if (name === 'claude_code.cost.usage') t.cost_usd += v
+    else if (name === 'claude_code.session.count') t.sessions += v
+    else if (name === 'claude_code.commit.count') t.commits += v
+    else if (name === 'claude_code.pull_request.count') t.prs += v
+    else if (name === 'claude_code.lines_of_code.count') {
+      if (kind === 'removed') t.lines_removed += v; else t.lines_added += v
+    } else if (name === 'claude_code.active_time.total') t.active_seconds += v
+  }
+  return t
+}
+
 function renderStats () {
-  const t = totals
+  const t = computeTotals()
   const tokens = (t.tokens_in || 0) + (t.tokens_out || 0)
   const cards = [
     ['받은 요청', fmtN(t.requests), ''],
@@ -52,7 +155,7 @@ function renderStats () {
 function renderLeakBar () {
   const bar = $('#leakBar')
   const all = []
-  for (const c of captures) for (const l of c.leaks) if (!all.includes(l)) all.push(l)
+  for (const c of visible()) for (const l of c.leaks) if (!all.includes(l)) all.push(l)
   if (all.length === 0) { bar.className = ''; bar.textContent = ''; return }
   bar.className = 'show'
   bar.textContent = ''
@@ -93,8 +196,16 @@ function rowFor (c) {
 function renderStream () {
   const box = $('#rows')
   box.textContent = ''
-  $('#streamEmpty').hidden = captures.length > 0
-  for (const c of [...captures].reverse()) box.append(rowFor(c))
+  const vis = visible()
+  $('#streamEmpty').hidden = vis.length > 0
+  for (const c of [...vis].reverse()) box.append(rowFor(c))
+}
+
+function forwardOffReason () {
+  const on = $('#cfgFwd').checked
+  const empty = $('#cfgUp').value.trim() === ''
+  if (on && empty) return '전달 안 함 — 서버 주소가 비어 있음'
+  return '전달 안 함 — 전달이 꺼져 있음'
 }
 
 /* ---------- 인스펙터 ---------- */
@@ -191,7 +302,7 @@ function drawChart (svgId, key, color) {
   const svg = $(svgId)
   svg.textContent = ''
   const W = 600, H = 180, P = { t: 10, r: 52, b: 22, l: 10 }
-  const pts = series.slice(-120)
+  const pts = (range === 'session' ? series : histSeries(parseInt(range, 10))).slice(-120)
 
   const cs = getComputedStyle(document.documentElement)
   const gridC = cs.getPropertyValue('--line').trim() || '#262c35'
@@ -242,6 +353,23 @@ function drawChart (svgId, key, color) {
   svg.append(first, last)
 }
 
+function histSeries (days) {
+  if (!hist || !hist.days) return []
+  const cutoff = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
+  const out = []
+  for (const date of Object.keys(hist.days).sort()) {
+    if (date < cutoff) continue
+    let tokens = 0, cost = 0
+    for (const [acct, st] of Object.entries(hist.days[date])) {
+      if (filters.length && !filters.every(f => f.key !== 'user.email' || f.val === acct)) continue
+      tokens += (st.tokens_in || 0) + (st.tokens_out || 0)
+      cost += st.cost_usd || 0
+    }
+    out.push({ ts: date.slice(5), tokens, cost })
+  }
+  return out
+}
+
 function renderCharts () {
   const cs = getComputedStyle(document.documentElement)
   const accent = cs.getPropertyValue('--accent').trim() || '#35b5ac'
@@ -263,6 +391,16 @@ function renderCharts () {
     r.append(n, val); box.append(r)
   }
 }
+
+document.querySelectorAll('#rangeSeg button').forEach(b => {
+  b.addEventListener('click', async () => {
+    document.querySelectorAll('#rangeSeg button').forEach(x => x.classList.remove('on'))
+    b.classList.add('on')
+    range = b.dataset.range
+    if (range !== 'session') { try { hist = await invoke('history') } catch (e) { hist = null } }
+    renderCharts()
+  })
+})
 
 /* ---------- 탭 ---------- */
 document.querySelectorAll('.tab[data-pane]').forEach(tab => {
@@ -300,6 +438,14 @@ async function download (kind) {
 $('#btnJson').addEventListener('click', () => download('json'))
 $('#btnCsv').addEventListener('click', () => download('csv'))
 
+function syncFwdWarn () {
+  const on = $('#cfgFwd').checked
+  const empty = $('#cfgUp').value.trim() === ''
+  $('#fwdWarn').hidden = !(on && empty)
+}
+$('#cfgFwd').addEventListener('change', syncFwdWarn)
+$('#cfgUp').addEventListener('input', syncFwdWarn)
+
 $('#btnSaveCfg').addEventListener('click', async () => {
   const cfg = await invoke('set_config', {
     cfg: {
@@ -311,9 +457,32 @@ $('#btnSaveCfg').addEventListener('click', async () => {
   $('#cfgPort').value = cfg.listen_port
   $('#cfgUp').value = cfg.upstream
   $('#cfgFwd').checked = cfg.forward_enabled
+  syncFwdWarn()
   $('#btnSaveCfg').textContent = '저장됨 ✓'
   setTimeout(() => { $('#btnSaveCfg').textContent = '저장' }, 1500)
 })
+
+async function loadSettingsPaths () {
+  let paths = []
+  try { paths = await invoke('find_settings') } catch (e) { paths = [] }
+  const sel = $('#diagSelect')
+  sel.textContent = ''
+  if (paths.length === 0) {
+    const o = document.createElement('option')
+    o.textContent = '찾지 못함 — 경로를 직접 입력하세요'
+    o.value = ''
+    sel.append(o)
+    return
+  }
+  for (const p of paths) {
+    const o = document.createElement('option')
+    o.value = p
+    o.textContent = p.replace(/^\/Users\/[^/]+/, '~')
+    sel.append(o)
+  }
+  $('#diagPath').value = paths[0]
+  sel.addEventListener('change', () => { $('#diagPath').value = sel.value })
+}
 
 $('#btnDiag').addEventListener('click', async () => {
   const r = await invoke('inspect_settings', { path: $('#diagPath').value.trim() })
@@ -426,8 +595,50 @@ function initSplitter () {
   })
 }
 
+$('#fAdd').addEventListener('click', () => {
+  const key = $('#fKey').value
+  const val = $('#fVal').value
+  if (!key || !val) return
+  if (!filters.some(f => f.key === key && f.val === val)) filters.push({ key, val })
+  renderAll()
+})
+$('#fClear').addEventListener('click', () => { filters = []; renderAll() })
+
+$('#btnRet').addEventListener('click', async () => {
+  const d = parseInt($('#cfgRet').value, 10) || 90
+  await invoke('set_retention', { days: d })
+  $('#btnRet').textContent = '적용됨 ✓'
+  setTimeout(() => { $('#btnRet').textContent = '적용' }, 1500)
+})
+$('#btnClearHist').addEventListener('click', async () => {
+  await invoke('clear_history')
+  hist = await invoke('history').catch(() => null)
+  if (range !== 'session') renderCharts()
+  $('#btnClearHist').textContent = '삭제됨'
+  setTimeout(() => { $('#btnClearHist').textContent = '기록 삭제' }, 1500)
+})
+
+$('#btnUpd').addEventListener('click', async () => {
+  const st = $('#updStatus')
+  const btn = $('#btnUpd')
+  btn.disabled = true
+  st.textContent = '확인 중…'
+  try {
+    const up = await check()
+    if (!up) { st.textContent = '최신 버전을 쓰고 있습니다.'; btn.disabled = false; return }
+    st.textContent = `새 버전 ${up.version} 이 있습니다. 내려받는 중…`
+    await up.downloadAndInstall()
+    st.textContent = '설치 완료 — 앱을 다시 시작합니다.'
+    await relaunch()
+  } catch (e) {
+    st.textContent = '확인 실패: ' + (e && e.message ? e.message : String(e))
+    btn.disabled = false
+  }
+})
+
 /* ---------- 부트 ---------- */
 function renderAll () {
+  refreshFilterOptions(); renderChips()
   renderStats(); renderLeakBar(); renderStream(); renderInspector()
   if (!$('#paneChart').hidden) renderCharts()
 }
@@ -456,6 +667,13 @@ invoke('snapshot').then(s => {
   $('#cfgPort').value = s.cfg.listen_port
   $('#cfgUp').value = s.cfg.upstream
   $('#cfgFwd').checked = s.cfg.forward_enabled
+  loadSettingsPaths()
+  syncFwdWarn()
+  invoke('history').then(h => { hist = h; if (h) $('#cfgRet').value = h.retention_days })
+    .catch(() => {})
+  invoke('history_path').then(p => {
+    $('#histPath').textContent = p.replace(/^\/Users\/[^/]+/, '~')
+  }).catch(() => {})
   const st = $('#srvStatus')
   if (s.running) { st.className = 'status on'; st.textContent = `수신 중 :${s.cfg.listen_port}` }
   renderAll()

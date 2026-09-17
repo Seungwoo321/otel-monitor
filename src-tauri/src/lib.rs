@@ -1,3 +1,4 @@
+mod history;
 mod otlp;
 mod state;
 
@@ -46,6 +47,27 @@ fn clear(app: State<'_, Arc<AppState>>) {
 }
 
 #[tauri::command]
+fn history(app: State<'_, Arc<AppState>>) -> history::History {
+    app.history.snapshot()
+}
+
+#[tauri::command]
+fn history_path(app: State<'_, Arc<AppState>>) -> String {
+    app.history.path_string()
+}
+
+#[tauri::command]
+fn set_retention(app: State<'_, Arc<AppState>>, days: u32) {
+    app.history.set_retention(days);
+    app.history.flush();
+}
+
+#[tauri::command]
+fn clear_history(app: State<'_, Arc<AppState>>) {
+    app.history.clear();
+}
+
+#[tauri::command]
 fn export_json(app: State<'_, Arc<AppState>>) -> Result<String, String> {
     let caps = app.captures.read().clone();
     serde_json::to_string_pretty(&caps).map_err(|e| e.to_string())
@@ -79,6 +101,47 @@ fn export_csv(app: State<'_, Arc<AppState>>) -> String {
         }
     }
     s
+}
+
+/// Claude Code 설정 파일 후보를 찾는다.
+///
+/// 경로는 고정이 아니다 — `CLAUDE_CONFIG_DIR` 로 바꿀 수 있고, 계정을 나눠 쓰면
+/// 여러 개가 공존한다. 그래서 환경변수를 먼저 보고, 없으면 흔한 위치를 훑는다.
+#[tauri::command]
+fn find_settings() -> Vec<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut out: Vec<String> = Vec::new();
+
+    let mut push = |p: String| {
+        if !p.is_empty() && std::path::Path::new(&p).is_file() && !out.contains(&p) {
+            out.push(p);
+        }
+    };
+
+    // 1) 명시된 config 디렉토리가 최우선
+    if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
+        for d in dir.split(':') {
+            push(format!("{}/settings.json", d.trim_end_matches('/')));
+        }
+    }
+
+    // 2) 홈 아래의 .claude* 디렉토리를 훑는다 (계정별로 나눠 쓰는 경우)
+    if !home.is_empty() {
+        if let Ok(rd) = std::fs::read_dir(&home) {
+            let mut dirs: Vec<String> = rd
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().is_dir())
+                .filter_map(|e| e.file_name().into_string().ok())
+                .filter(|n| n == ".claude" || n.starts_with(".claude-"))
+                .collect();
+            dirs.sort();
+            for n in dirs {
+                push(format!("{home}/{n}/settings.json"));
+            }
+        }
+    }
+
+    out
 }
 
 /// 설치된 settings.json 을 읽어 현재 OTel 설정 상태를 진단한다.
@@ -141,6 +204,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             snapshot,
@@ -148,7 +213,12 @@ pub fn run() {
             clear,
             export_json,
             export_csv,
-            inspect_settings
+            inspect_settings,
+            find_settings,
+            history,
+            history_path,
+            set_retention,
+            clear_history
         ])
         .setup(move |app| {
             for_setup.set_handle(app.handle().clone());
