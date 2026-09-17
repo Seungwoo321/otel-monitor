@@ -1,0 +1,10 @@
+src-tauri/
+node_modules/
+dist/
+dist-release/
+.local/
+scripts/
+docs/
+assets/
+README.md
+LICENSE

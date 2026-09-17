@@ -38,6 +38,62 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 err() { printf '\033[31m✗ %s\033[0m\n' "$1" >&2; }
 info() { printf '\033[32m▸ %s\033[0m\n' "$1"; }
 
+# ---------------------------------------------------------------- 인자
+ARG_UPDATER_KEY=""
+ARG_ENV_FILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --updater-key) ARG_UPDATER_KEY="${2:?--updater-key 에 경로가 필요합니다}"; shift 2 ;;
+    --env-file)    ARG_ENV_FILE="${2:?--env-file 에 경로가 필요합니다}"; shift 2 ;;
+    -h|--help)
+      cat <<'USAGE'
+사용법: build-macos-release.sh [옵션]
+
+  --updater-key <경로>   업데이터 서명 키 (기본: ~/.tauri/<package.json name>.key)
+  --env-file <경로>      애플 자격 파일 (기본: ~/.apple-signing.env)
+
+서명·공증한 universal .app/.dmg 를 만든다. 자격은 환경변수로 넘겨도 된다.
+USAGE
+      exit 0 ;;
+    *) printf '알 수 없는 옵션: %s\n' "$1" >&2; exit 1 ;;
+  esac
+done
+
+# 계정 공통 자격을 먼저 읽어들인다 (없으면 환경변수로 넘어온 값을 쓴다).
+# 앱 암호는 애플 ID 에 속하므로 프로젝트마다 따로 만들 필요가 없다.
+_env_file="${ARG_ENV_FILE/#\~/${HOME}}"
+_env_file="${_env_file:-${HOME}/.apple-signing.env}"
+if [[ -z "${APPLE_ID:-}" && -f "${_env_file}" ]]; then
+  # shellcheck disable=SC1091
+  source "${_env_file}"
+  info "자격 로드: ${_env_file/#${HOME}/\~}"
+fi
+
+# 업데이터 서명 키.
+# 우선순위: --updater-key 인자 > TAURI_SIGNING_PRIVATE_KEY(_PATH) > ~/.tauri/<name>.key
+# Tauri v2 는 키 "내용"을 TAURI_SIGNING_PRIVATE_KEY 로 받는다 (경로 변수는 읽지 않는다).
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+  if [[ -n "${ARG_UPDATER_KEY}" ]]; then
+    _updater_key="${ARG_UPDATER_KEY/#\~/${HOME}}"
+  elif [[ -n "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]]; then
+    _updater_key="${TAURI_SIGNING_PRIVATE_KEY_PATH}"
+  else
+    _proj="$(node -p "require('${REPO_ROOT}/package.json').name" 2>/dev/null || basename "${REPO_ROOT}")"
+    _updater_key="${HOME}/.tauri/${_proj}.key"
+    info "업데이터 키를 추론했습니다 (명시하려면 --updater-key <경로>)"
+  fi
+  if [[ -f "${_updater_key}" ]]; then
+    TAURI_SIGNING_PRIVATE_KEY="$(cat "${_updater_key}")"
+    export TAURI_SIGNING_PRIVATE_KEY
+    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+    info "업데이터 키: ${_updater_key/#${HOME}/\~}"
+  else
+    err "업데이터 키가 없습니다: ${_updater_key/#${HOME}/\~}"
+    err "만들려면: pnpm tauri signer generate -w \"${_updater_key}\" --password \"\""
+    err "지금은 자동 업데이트 없이 빌드합니다."
+  fi
+fi
+
 missing=()
 
 # --- Signing identity (always required) ---
