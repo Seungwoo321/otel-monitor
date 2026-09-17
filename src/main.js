@@ -27,6 +27,39 @@ const fmtDur = (s) => {
   return `${Math.floor(s / 3600)}시 ${Math.floor((s % 3600) / 60)}분`
 }
 
+/* ---------- 통계 카드 열 수 ---------- */
+const STAT_MIN_W = 118   // 카드 최소 폭(px)
+const STAT_GAP = 1
+
+/**
+ * 카드 n 개를 폭 w 에 배치할 때 쓸 열 수를 고른다.
+ *
+ * 폭에 들어가는 최대 열 수(maxFit)부터 훑으며, 마지막 줄에 남는 칸이 가장 적은 값을 쓴다.
+ * 남는 칸이 같으면 더 넓게(열이 많게) 쓴다. 이렇게 하면 "마지막 줄에 1개만" 남지 않는다.
+ */
+function pickCols (n, w) {
+  const maxFit = Math.max(1, Math.floor((w + STAT_GAP) / (STAT_MIN_W + STAT_GAP)))
+  if (n <= maxFit) return n            // 한 줄에 다 들어가면 그대로
+  let best = maxFit
+  let bestWaste = Infinity
+  for (let c = maxFit; c >= 2; c--) {
+    const rem = n % c
+    const waste = rem === 0 ? 0 : c - rem   // 마지막 줄의 빈 칸 수
+    if (waste < bestWaste) { bestWaste = waste; best = c }
+    if (bestWaste === 0) break
+  }
+  return best
+}
+
+function layoutStats () {
+  const box = $('#stats')
+  const n = box.children.length
+  if (!n) return
+  const w = box.clientWidth
+  if (!w) return
+  box.style.setProperty('--stat-cols', String(pickCols(n, w)))
+}
+
 /* ---------- 필터 ---------- */
 function matches (c) {
   return filters.every(f => c.attrs.some(([k, v]) => k === f.key && v === f.val))
@@ -149,6 +182,7 @@ function renderStats () {
     const vv = el('div', 'v' + (cls ? ' ' + cls : '')); vv.textContent = v
     d.append(kk, vv); box.append(d)
   }
+  layoutStats()
 }
 
 /* ---------- 유출 배너 ---------- */
@@ -635,6 +669,12 @@ $('#btnUpd').addEventListener('click', async () => {
     btn.disabled = false
   }
 })
+
+try {
+  new ResizeObserver(layoutStats).observe($('#stats'))
+} catch (e) {
+  window.addEventListener('resize', layoutStats)
+}
 
 /* ---------- 부트 ---------- */
 function renderAll () {

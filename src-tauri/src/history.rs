@@ -38,7 +38,7 @@ pub struct LeakRecord {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct History {
     /// 날짜(YYYY-MM-DD) → 계정 → 집계
     pub days: BTreeMap<String, BTreeMap<String, DayStat>>,
@@ -50,6 +50,16 @@ pub struct History {
 
 fn default_retention() -> u32 {
     90
+}
+
+impl Default for History {
+    fn default() -> Self {
+        Self {
+            days: BTreeMap::new(),
+            leaks: Vec::new(),
+            retention_days: default_retention(),
+        }
+    }
 }
 
 /// 시리즈별 누계의 마지막 값. (날짜, 계정, 메트릭, 구분) → 값
@@ -65,10 +75,15 @@ pub struct HistoryStore {
 impl HistoryStore {
     pub fn new() -> Self {
         let path = Self::file_path();
-        let data = std::fs::read_to_string(&path)
+        let mut data = std::fs::read_to_string(&path)
             .ok()
             .and_then(|s| serde_json::from_str::<History>(&s).ok())
             .unwrap_or_default();
+        // 예전 파일이나 잘못된 값으로 0 이 들어와 있으면 기본값으로 되돌린다.
+        // 0 이면 prune 이 전부 지워 버린다.
+        if data.retention_days == 0 {
+            data.retention_days = default_retention();
+        }
 
         Self {
             path,
