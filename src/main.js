@@ -159,30 +159,100 @@ function computeTotals () {
   return t
 }
 
+const CARD_DEFS = [
+  { id: 'requests', label: '받은 요청' },
+  { id: 'bytes',    label: '누적 용량' },
+  { id: 'tokens',   label: '토큰',      cls: 'accent' },
+  { id: 'cost',     label: '비용',      cls: 'accent' },
+  { id: 'sessions', label: '세션' },
+  { id: 'commits',  label: '커밋 / PR' },
+  { id: 'lines',    label: '코드 변경' },
+  { id: 'active',   label: '활동 시간' },
+  { id: 'fails',    label: '전달 실패' },
+  { id: 'leaks',    label: '내용 유출' }
+]
+
+let visibleCards = CARD_DEFS.map(c => c.id)
+
+function loadCardPrefs () {
+  try {
+    const raw = localStorage.getItem('otel-cards')
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    if (Array.isArray(saved) && saved.length) {
+      // 정의에 없는 값은 버린다 (버전이 올라가며 카드가 바뀔 수 있다)
+      visibleCards = CARD_DEFS.map(c => c.id).filter(id => saved.includes(id))
+    }
+  } catch (e) { /* 저장소를 못 읽어도 전체 표시로 동작 */ }
+}
+
+function saveCardPrefs () {
+  try { localStorage.setItem('otel-cards', JSON.stringify(visibleCards)) } catch (e) {}
+}
+
+function cardValue (id, t) {
+  switch (id) {
+    case 'requests': return [fmtN(t.requests), '']
+    case 'bytes':    return [fmtB(t.bytes || 0), '']
+    case 'tokens':   return [fmtN((t.tokens_in || 0) + (t.tokens_out || 0)), 'accent']
+    case 'cost':     return [fmtUsd(t.cost_usd), 'accent']
+    case 'sessions': return [fmtN(t.sessions), '']
+    case 'commits':  return [`${fmtN(t.commits)} / ${fmtN(t.prs)}`, '']
+    case 'lines':    return [`+${fmtN(t.lines_added)} −${fmtN(t.lines_removed)}`, '']
+    case 'active':   return [fmtDur(t.active_seconds), '']
+    case 'fails':    return [fmtN(t.forward_failures), t.forward_failures > 0 ? 'danger' : '']
+    case 'leaks':    return [fmtN(t.leak_events), t.leak_events > 0 ? 'danger' : '']
+    default:         return ['', '']
+  }
+}
+
 function renderStats () {
   const t = computeTotals()
-  const tokens = (t.tokens_in || 0) + (t.tokens_out || 0)
-  const cards = [
-    ['받은 요청', fmtN(t.requests), ''],
-    ['누적 용량', fmtB(t.bytes || 0), ''],
-    ['토큰', fmtN(tokens), 'accent'],
-    ['비용', fmtUsd(t.cost_usd), 'accent'],
-    ['세션', fmtN(t.sessions), ''],
-    ['커밋 / PR', `${fmtN(t.commits)} / ${fmtN(t.prs)}`, ''],
-    ['코드 변경', `+${fmtN(t.lines_added)} −${fmtN(t.lines_removed)}`, ''],
-    ['활동 시간', fmtDur(t.active_seconds), ''],
-    ['전달 실패', fmtN(t.forward_failures), t.forward_failures > 0 ? 'danger' : ''],
-    ['내용 유출', fmtN(t.leak_events), t.leak_events > 0 ? 'danger' : '']
-  ]
   const box = $('#stats')
   box.textContent = ''
-  for (const [k, v, cls] of cards) {
+  for (const def of CARD_DEFS) {
+    if (!visibleCards.includes(def.id)) continue
+    const [v, cls] = cardValue(def.id, t)
     const d = el('div', 'stat')
-    const kk = el('div', 'k'); kk.textContent = k
+    const kk = el('div', 'k'); kk.textContent = def.label
     const vv = el('div', 'v' + (cls ? ' ' + cls : '')); vv.textContent = v
     d.append(kk, vv); box.append(d)
   }
   layoutStats()
+}
+
+function renderCardMenu () {
+  const m = $('#cardMenu')
+  m.textContent = ''
+  const h = el('div', 'mhead'); h.textContent = '표시할 카드'
+  m.append(h)
+  for (const def of CARD_DEFS) {
+    const l = document.createElement('label')
+    const cb = document.createElement('input')
+    cb.type = 'checkbox'
+    cb.checked = visibleCards.includes(def.id)
+    cb.addEventListener('change', () => {
+      visibleCards = cb.checked
+        ? CARD_DEFS.map(c => c.id).filter(id => id === def.id || visibleCards.includes(id))
+        : visibleCards.filter(id => id !== def.id)
+      saveCardPrefs()
+      renderStats()
+    })
+    const sp = document.createElement('span'); sp.textContent = def.label
+    l.append(cb, sp); m.append(l)
+  }
+  const foot = el('div', 'mfoot')
+  const all = document.createElement('button'); all.type = 'button'; all.textContent = '전체'
+  all.addEventListener('click', () => {
+    visibleCards = CARD_DEFS.map(c => c.id)
+    saveCardPrefs(); renderStats(); renderCardMenu()
+  })
+  const none = document.createElement('button'); none.type = 'button'; none.textContent = '해제'
+  none.addEventListener('click', () => {
+    visibleCards = []
+    saveCardPrefs(); renderStats(); renderCardMenu()
+  })
+  foot.append(all, none); m.append(foot)
 }
 
 /* ---------- 유출 배너 ---------- */
@@ -239,6 +309,9 @@ function renderStream () {
   const box = $('#rows')
   box.textContent = ''
   const vis = visible()
+  $('#streamCount').textContent = filters.length
+    ? `${vis.length} / ${captures.length}건`
+    : `${captures.length}건`
   $('#streamEmpty').hidden = vis.length > 0
   for (const c of [...vis].reverse()) box.append(rowFor(c))
 }
@@ -588,6 +661,7 @@ const fmtSec = (v, axis) => axis ? (v >= 3600 ? (v / 3600).toFixed(1) + 'h' : Ma
 const fmtLines = (v, axis) => axis ? (v >= 1000 ? (v / 1000).toFixed(1) + 'K' : Math.round(v)) : fmtN(v)
 
 function renderCharts () {
+  if (currentPane === 'chart') renderSummary()
   const p = palette()
   const pts = chartData()
 
@@ -625,47 +699,6 @@ function renderCharts () {
     ? `+${fmtN(last.added || 0)} −${fmtN(last.removed || 0)}`
     : `+${fmtN(sum('added'))} −${fmtN(sum('removed'))}`
 
-  // 토큰 구성
-  const t = computeTotals()
-  const box = $('#tokenBreak')
-  box.textContent = ''
-  for (const [k, v] of [['input', t.tokens_in], ['output', t.tokens_out],
-    ['cacheRead', t.tokens_cache_read], ['cacheCreation', t.tokens_cache_creation]]) {
-    const r = el('div', 'mrow')
-    const n = el('div', 'n'); n.textContent = k
-    const val = el('div', 'v'); val.textContent = fmtN(v)
-    r.append(n, val); box.append(r)
-  }
-
-  // 계정별 (이력이 있을 때만)
-  const ab = $('#acctBreak')
-  ab.textContent = ''
-  const acc = {}
-  if (hist && hist.days) {
-    const days = range === 'session' ? 1 : parseInt(range, 10)
-    const cutoff = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
-    for (const [date, accts] of Object.entries(hist.days)) {
-      if (range !== 'session' && date < cutoff) continue
-      for (const [a, st] of Object.entries(accts)) {
-        acc[a] = acc[a] || { tokens: 0, cost: 0 }
-        acc[a].tokens += (st.tokens_in || 0) + (st.tokens_out || 0)
-        acc[a].cost += st.cost_usd || 0
-      }
-    }
-  }
-  const entries = Object.entries(acc).sort((a, b) => b[1].tokens - a[1].tokens)
-  if (entries.length === 0) {
-    const e = el('div'); e.style.cssText = 'color:var(--text-3);font-size:12px'
-    e.textContent = '기록이 아직 없습니다.'
-    ab.append(e)
-  } else {
-    for (const [a, v] of entries) {
-      const r = el('div', 'mrow')
-      const n = el('div', 'n'); n.textContent = a
-      const val = el('div', 'v'); val.textContent = `${fmtN(v.tokens)} · ${fmtCost(v.cost)}`
-      r.append(n, val); ab.append(r)
-    }
-  }
 }
 
 /* ---------- 탭 ---------- */
@@ -678,6 +711,7 @@ document.querySelectorAll('.tab[data-pane]').forEach(tab => {
     $('#paneChart').hidden = p !== 'chart'
     $('#paneSetup').hidden = p !== 'setup'
     $('#paneInspect').hidden = p !== 'inspect'
+    syncSidePanel(p)
     if (p === 'chart') renderCharts()
     if (p === 'inspect') renderInspector()
   })
@@ -928,6 +962,146 @@ document.addEventListener('keydown', (e) => {
   if (!$('#paneInspect').hidden) closeInspector()
 })
 
+
+/* ---------- 사이드 패널 ---------- */
+// 탭마다 오른쪽에 둘 내용이 다르다. 인스펙터는 "요청 하나"를 보는 패널이라
+// 집계를 보는 차트 탭이나 설정 탭에는 맞지 않는다.
+let sideCollapsed = false
+let currentPane = 'stream'
+
+function syncSidePanel (pane) {
+  currentPane = pane || currentPane
+  const isChart = currentPane === 'chart'
+  const isSetup = currentPane === 'setup'
+
+  // 설정 탭은 오른쪽에 보여줄 것이 없다
+  const hideSide = isSetup || sideCollapsed
+  $('main').classList.toggle('side-collapsed', hideSide)
+  $('#sideReopen').hidden = !(sideCollapsed && !isSetup)
+
+  $('#sideTitle').textContent = isChart ? '요약' : '인스펙터'
+  $('#inspector').hidden = isChart
+  $('#sideSummary').hidden = !isChart
+  if (isChart) renderSummary()
+}
+
+function renderSummary () {
+  const box = $('#sideSummary')
+  box.textContent = ''
+  const t = computeTotals()
+
+  const sec = (title) => {
+    const d = el('div', 'sec')
+    const h = el('h3'); h.textContent = title
+    d.append(h); return d
+  }
+  const row = (k, v) => {
+    const r = el('div', 'mrow')
+    const n = el('div', 'n'); n.textContent = k
+    const val = el('div', 'v'); val.textContent = v
+    r.append(n, val); return r
+  }
+
+  // 범위 합계
+  const pts = chartData()
+  const sum = (key) => pts.reduce((a, d) => a + (d[key] || 0), 0)
+  const s1 = sec(range === 'session' ? '이번 실행' : `최근 ${range}일`)
+  if (range === 'session') {
+    s1.append(
+      row('토큰', fmtN(t.tokens_in + t.tokens_out)),
+      row('비용', fmtCost(t.cost_usd)),
+      row('활동 시간', fmtDur(t.active_seconds)),
+      row('코드 변경', `+${fmtN(t.lines_added)} −${fmtN(t.lines_removed)}`)
+    )
+  } else {
+    s1.append(
+      row('토큰', fmtN(sum('tokens_in') + sum('tokens_out'))),
+      row('비용', fmtCost(sum('cost'))),
+      row('활동 시간', fmtDur(sum('active'))),
+      row('코드 변경', `+${fmtN(sum('added'))} −${fmtN(sum('removed'))}`),
+      row('일수', `${pts.length}일`)
+    )
+  }
+  box.append(s1)
+
+  // 토큰 구성
+  const s2 = sec('토큰 구성')
+  for (const [k, v] of [['input', t.tokens_in], ['output', t.tokens_out],
+    ['cacheRead', t.tokens_cache_read], ['cacheCreation', t.tokens_cache_creation]]) {
+    s2.append(row(k, fmtN(v)))
+  }
+  box.append(s2)
+
+  // 계정별
+  const s3 = sec('계정별')
+  const acc = {}
+  if (hist && hist.days) {
+    const days = range === 'session' ? 1 : parseInt(range, 10)
+    const cutoff = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
+    for (const [date, accts] of Object.entries(hist.days)) {
+      if (range !== 'session' && date < cutoff) continue
+      for (const [a, st] of Object.entries(accts)) {
+        acc[a] = acc[a] || { tokens: 0, cost: 0 }
+        acc[a].tokens += (st.tokens_in || 0) + (st.tokens_out || 0)
+        acc[a].cost += st.cost_usd || 0
+      }
+    }
+  }
+  const entries = Object.entries(acc).sort((a, b) => b[1].tokens - a[1].tokens)
+  if (entries.length === 0) {
+    const e = el('div'); e.style.cssText = 'color:var(--text-3);font-size:12px'
+    e.textContent = '기록이 아직 없습니다.'
+    s3.append(e)
+  } else {
+    for (const [a, v] of entries) s3.append(row(a, `${fmtN(v.tokens)} · ${fmtCost(v.cost)}`))
+  }
+  box.append(s3)
+}
+
+$('#sideCollapse').addEventListener('click', () => {
+  sideCollapsed = true
+  try { localStorage.setItem('otel-side-collapsed', '1') } catch (e) {}
+  syncSidePanel()
+})
+$('#sideReopen').addEventListener('click', () => {
+  sideCollapsed = false
+  try { localStorage.setItem('otel-side-collapsed', '0') } catch (e) {}
+  syncSidePanel()
+})
+
+
+/* ---------- 상단바 ---------- */
+$('#btnCards').addEventListener('click', (e) => {
+  e.stopPropagation()
+  const m = $('#cardMenu')
+  const opening = m.hidden
+  if (opening) renderCardMenu()
+  m.hidden = !opening
+  $('#btnCards').classList.toggle('on', opening)
+})
+document.addEventListener('click', (e) => {
+  const m = $('#cardMenu')
+  if (!m.hidden && !m.contains(e.target)) {
+    m.hidden = true
+    $('#btnCards').classList.remove('on')
+  }
+})
+
+// 테마는 시스템 → 라이트 → 다크 순으로 돈다
+$('#btnTheme').addEventListener('click', () => {
+  const order = ['system', 'light', 'dark']
+  let cur = 'system'
+  try { cur = localStorage.getItem('otel-theme') || 'system' } catch (e) {}
+  const next = order[(order.indexOf(cur) + 1) % order.length]
+  try { localStorage.setItem('otel-theme', next) } catch (e) {}
+  applyTheme(next)
+  $('#btnTheme').title = `테마: ${{ system: '시스템', light: '라이트', dark: '다크' }[next]}`
+})
+
+$('#btnSettings').addEventListener('click', () => {
+  document.querySelector('.tab[data-pane="setup"]').click()
+})
+
 /* ---------- 부트 ---------- */
 function renderAll () {
   refreshFilterOptions(); renderChips()
@@ -959,8 +1133,11 @@ invoke('snapshot').then(s => {
   $('#cfgPort').value = s.cfg.listen_port
   $('#cfgUp').value = s.cfg.upstream
   $('#cfgFwd').checked = s.cfg.forward_enabled
+  loadCardPrefs()
   loadSettingsPaths()
   syncFwdWarn()
+  try { sideCollapsed = localStorage.getItem('otel-side-collapsed') === '1' } catch (e) {}
+  syncSidePanel('stream')
   invoke('history').then(h => { hist = h; if (h) $('#cfgRet').value = h.retention_days })
     .catch(() => {})
   invoke('history_path').then(p => {

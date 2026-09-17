@@ -1,5 +1,6 @@
 mod history;
 mod otlp;
+mod tray;
 mod state;
 
 use std::sync::Arc;
@@ -222,6 +223,7 @@ pub fn run() {
         ])
         .setup(move |app| {
             for_setup.set_handle(app.handle().clone());
+            tray::build(app.handle(), for_setup.clone())?;
 
             let st = for_setup.clone();
             let port = st.cfg.read().listen_port;
@@ -252,6 +254,13 @@ pub fn run() {
             });
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // 창을 닫아도 앱은 메뉴바에 남아 계속 수신한다.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

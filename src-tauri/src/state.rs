@@ -276,6 +276,7 @@ impl AppState {
         self.history.flush();
 
         if let Some(h) = self.handle.read().as_ref() {
+            crate::tray::refresh(h, self);
             let _ = h.emit("otlp-capture", &cap);
         }
     }

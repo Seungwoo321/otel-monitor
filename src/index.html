@@ -120,6 +120,39 @@
   button.primary { background: var(--accent-dim); color: var(--accent); border-color: var(--accent-dim); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+  .iconbtn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 28px; padding: 0;
+    background: transparent; border: 1px solid transparent;
+    border-radius: 6px; color: var(--text-3); cursor: pointer;
+  }
+  .iconbtn:hover { color: var(--text); background: var(--panel-2); border-color: var(--line-2); }
+  .iconbtn.on { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
+
+  .menuwrap { position: relative; }
+  .menu {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+    min-width: 190px; padding: 6px;
+    background: var(--panel); border: 1px solid var(--line-2);
+    border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  .menu .mhead {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--text-3);
+    padding: 5px 8px 7px;
+  }
+  .menu label {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 8px; border-radius: 5px;
+    font-size: 12.5px; color: var(--text-2); cursor: pointer;
+  }
+  .menu label:hover { background: var(--panel-2); color: var(--text); }
+  .menu .mfoot {
+    display: flex; gap: 6px; padding: 6px 4px 2px;
+    border-top: 1px solid var(--line); margin-top: 5px;
+  }
+  .menu .mfoot button { flex: 1; font-size: 11.5px; padding: 4px 8px; }
+
   /* ---- leak banner ---- */
   #leakBar {
     display: none;
@@ -204,6 +237,27 @@
 
   .col { display: flex; flex-direction: column; overflow: hidden; }
 
+  .panel-toggle {
+    margin-left: auto; align-self: center;
+    background: transparent; border: none; color: var(--text-3);
+    font-size: 16px; line-height: 1; padding: 4px 12px; cursor: pointer;
+  }
+  .panel-toggle:hover { color: var(--text); }
+
+  /* 접힌 상태 — 본문이 전체 폭을 쓰고, 다시 열 손잡이만 남긴다 */
+  main.side-collapsed { grid-template-columns: 1fr; }
+  main.side-collapsed #side,
+  main.side-collapsed #splitter { display: none; }
+
+  .panel-reopen {
+    position: fixed; right: 0; top: 50%; transform: translateY(-50%);
+    z-index: 10; background: var(--panel); color: var(--text-3);
+    border: 1px solid var(--line); border-right: none;
+    border-radius: 7px 0 0 7px; padding: 14px 5px;
+    font-size: 15px; line-height: 1; cursor: pointer;
+  }
+  .panel-reopen:hover { color: var(--accent); border-color: var(--accent-dim); }
+
   #splitter {
     cursor: col-resize; background: var(--line);
     position: relative; user-select: none;
@@ -224,6 +278,16 @@
   .tab:hover { color: var(--text-2); }
 
   .scroll { overflow-y: auto; flex: 1; }
+
+  .streambar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 14px; border-bottom: 1px solid var(--line);
+    background: var(--panel); flex: none;
+  }
+  .streambar .sbinfo {
+    font-family: var(--mono); font-size: 11px; color: var(--text-3);
+  }
+  .streambar button { margin-left: auto; padding: 3px 10px; font-size: 11.5px; }
 
   /* ---- capture rows ---- */
   .row {
@@ -364,9 +428,33 @@
   <span class="brand">OTel Monitor</span>
   <span class="status" id="srvStatus">시작 중…</span>
   <span class="spacer"></span>
-  <button id="btnClear">비우기</button>
-  <button id="btnJson">JSON</button>
-  <button id="btnCsv">CSV</button>
+
+  <div class="menuwrap">
+    <button class="iconbtn" id="btnCards" type="button" title="표시할 카드 선택" aria-haspopup="true">
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+        <rect x="1.5" y="2.5" width="5" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <rect x="9.5" y="2.5" width="5" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <rect x="1.5" y="9.5" width="5" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <rect x="9.5" y="9.5" width="5" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      </svg>
+    </button>
+    <div class="menu" id="cardMenu" hidden></div>
+  </div>
+
+  <button class="iconbtn" id="btnTheme" type="button" title="테마 전환">
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+      <circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M8 3a5 5 0 000 10z" fill="currentColor"/>
+    </svg>
+  </button>
+
+  <button class="iconbtn" id="btnSettings" type="button" title="설정">
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+      <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8L3.4 3.4"
+            stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+    </svg>
+  </button>
 </header>
 
 <div id="leakBar"></div>
@@ -389,6 +477,11 @@
       <div class="tab" data-pane="chart">차트</div>
       <div class="tab" data-pane="setup">설정</div>
       <div class="tab narrow-only" data-pane="inspect">인스펙터</div>
+    </div>
+
+    <div class="streambar">
+      <span class="sbinfo" id="streamCount"></span>
+      <button id="btnClear" type="button">비우기</button>
     </div>
 
     <div class="scroll" id="paneStream">
@@ -432,15 +525,6 @@
         <div class="plot"><svg id="chartLines" viewBox="0 0 640 150" preserveAspectRatio="none"></svg></div>
       </div>
 
-      <div class="sec">
-        <h3>토큰 구성</h3>
-        <div id="tokenBreak"></div>
-      </div>
-
-      <div class="sec">
-        <h3>계정별 사용량</h3>
-        <div id="acctBreak"></div>
-      </div>
     </div>
 
     <div class="scroll" id="paneInspect" hidden></div>
@@ -511,6 +595,15 @@
       </div>
 
       <div class="sec">
+        <h3>내보내기</h3>
+        <div class="hint">지금 메모리에 있는 캡처를 파일로 저장합니다.</div>
+        <div style="display:flex;gap:8px;margin-top:9px">
+          <button id="btnJson" type="button">JSON</button>
+          <button id="btnCsv" type="button">CSV</button>
+        </div>
+      </div>
+
+      <div class="sec">
         <h3>업데이트</h3>
         <div class="hint" id="updStatus">현재 버전을 확인하세요.</div>
         <button id="btnUpd" style="margin-top:8px">업데이트 확인</button>
@@ -535,11 +628,17 @@
   <div id="splitter" role="separator" aria-orientation="vertical" title="드래그해서 너비 조정"></div>
 
   <div class="col" id="side">
-    <div class="tabs"><div class="tab active" style="cursor:default">인스펙터</div></div>
+    <div class="tabs">
+      <div class="tab active" style="cursor:default" id="sideTitle">인스펙터</div>
+      <button class="panel-toggle" id="sideCollapse" type="button" title="패널 접기">›</button>
+    </div>
     <div class="scroll" id="inspector">
       <div class="empty">왼쪽에서 항목을 선택하세요.</div>
     </div>
+    <div class="scroll" id="sideSummary" hidden></div>
   </div>
+
+  <button class="panel-reopen" id="sideReopen" type="button" hidden title="패널 열기">‹</button>
 </main>
 
 <script type="module" src="./main.js"></script>
