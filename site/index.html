@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OTel Monitor — Claude Code 텔레메트리 뷰어</title>
+<meta name="description" content="Claude Code 가 내보내는 텔레메트리를 눈으로 확인하는 macOS 앱. 로컬 프록시로 받아 디코딩하고, 프롬프트 원문 유출을 감지합니다.">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="OTel Monitor">
+<meta property="og:description" content="Claude Code 가 내보내는 텔레메트리를 눈으로 확인하는 macOS 앱">
+<meta property="og:image" content="./social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="./icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --bg:       #0d1014;
+    --bg-2:     #12161c;
+    --panel:    #171c23;
+    --line:     #242b34;
+    --line-2:   #323a45;
+    --text:     #e9ecf1;
+    --text-2:   #a6aeba;
+    --text-3:   #6d7682;
+
+    --accent:     #35b5ac;
+    --accent-2:   #7fd8d2;
+    --accent-dim: #18403e;
+    --warn:       #d19a4a;
+    --danger:     #d4604f;
+
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding-inline: 20px; }
+  a { color: var(--accent-2); }
+
+  /* ---------- hero ---------- */
+  header.hero {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(760px 340px at 78% 12%, rgba(53,181,172,.13), transparent 62%),
+      linear-gradient(180deg, var(--bg-2), var(--bg));
+  }
+  .hero-inner { padding-block: 84px 72px; text-align: center; }
+  .hero img.mark { width: 92px; height: 92px; border-radius: 21px; }
+
+  h1 {
+    font-size: clamp(38px, 7vw, 60px);
+    line-height: 1.12;
+    letter-spacing: -.03em;
+    font-weight: 700;
+    margin: 22px 0 14px;
+    text-wrap: balance;
+  }
+  .tagline {
+    font-size: clamp(16px, 2.4vw, 19px);
+    color: var(--text-2);
+    margin: 0 auto 10px;
+    max-width: 30ch;
+    text-wrap: balance;
+  }
+  .sub {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-3);
+    margin-bottom: 30px;
+  }
+
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-size: 15px; font-weight: 600;
+    padding: 13px 26px; border-radius: 9px;
+    text-decoration: none; border: 1px solid transparent;
+    transition: transform .12s ease, background .12s ease, border-color .12s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--accent); color: #04211f; }
+  .btn-primary:hover { background: var(--accent-2); }
+  .btn-ghost { border-color: var(--line-2); color: var(--text-2); }
+  .btn-ghost:hover { border-color: var(--text-3); color: var(--text); }
+
+  .meta {
+    margin-top: 16px;
+    font-family: var(--mono); font-size: 12px; color: var(--text-3);
+    display: flex; gap: 8px 16px; justify-content: center; flex-wrap: wrap;
+  }
+  .meta b { color: var(--text-2); font-weight: 500; }
+
+  /* ---------- shot ---------- */
+  .shot { padding-block: 0 8px; margin-top: -26px; }
+  .shot img {
+    width: 100%; height: auto; display: block;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 30px 70px rgba(0,0,0,.55);
+  }
+
+  /* ---------- sections ---------- */
+  section { padding-block: 66px; }
+  h2 {
+    font-size: 27px; font-weight: 700; letter-spacing: -.02em;
+    margin: 0 0 12px; text-wrap: balance;
+  }
+  .lede { color: var(--text-2); margin: 0 0 30px; max-width: 62ch; }
+  p { margin: 0 0 16px; }
+
+  code {
+    font-family: var(--mono); font-size: .875em;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 6px;
+  }
+
+  /* ---------- problem ---------- */
+  .facts { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .fact { background: var(--bg-2); padding: 18px 20px; display: flex; gap: 14px; align-items: flex-start; }
+  .fact .ico {
+    flex: none; width: 22px; height: 22px; border-radius: 5px;
+    background: var(--accent-dim); color: var(--accent);
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    margin-top: 2px;
+  }
+  .fact p { margin: 0; font-size: 14.5px; line-height: 1.65; }
+  .fact b { color: var(--text); }
+
+  /* ---------- flow ---------- */
+  .flow {
+    font-family: var(--mono); font-size: 13px; line-height: 2.05;
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 24px 22px;
+    overflow-x: auto; color: var(--text-2);
+  }
+  .flow .hi { color: var(--accent); font-weight: 500; }
+  .flow .dim { color: var(--text-3); }
+
+  /* ---------- feature grid ---------- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 20px 22px;
+  }
+  .card h3 {
+    margin: 0 0 8px; font-size: 15.5px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card h3 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+  .card.alert h3 .dot { background: var(--danger); }
+  .card p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.68; }
+
+  /* ---------- steps ---------- */
+  ol.steps { counter-reset: s; list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+  ol.steps > li {
+    counter-increment: s;
+    display: grid; grid-template-columns: 30px 1fr; gap: 15px; align-items: start;
+  }
+  ol.steps > li::before {
+    content: counter(s);
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--accent-dim); color: var(--accent);
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+  }
+  ol.steps .t { font-weight: 600; margin-bottom: 4px; }
+  ol.steps .d { color: var(--text-2); font-size: 14.5px; }
+
+  pre {
+    position: relative;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.75;
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 9px; padding: 16px 18px; overflow-x: auto;
+    color: var(--text-2); margin: 12px 0 0;
+  }
+  pre .k { color: var(--accent-2); }
+  pre .v { color: var(--text); }
+  .copy {
+    position: absolute; top: 9px; right: 9px;
+    font-family: var(--sans); font-size: 11.5px;
+    background: var(--panel); color: var(--text-3);
+    border: 1px solid var(--line-2); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  .copy:hover { color: var(--text); border-color: var(--text-3); }
+  .copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .note {
+    margin-top: 18px; padding: 15px 18px;
+    border: 1px solid var(--line); border-left: 3px solid var(--warn);
+    border-radius: 7px; background: var(--bg-2);
+    font-size: 14px; color: var(--text-2); line-height: 1.68;
+  }
+
+  /* ---------- metrics table ---------- */
+  .tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 430px; background: var(--bg-2); }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); }
+  thead th {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--text-3); background: var(--panel);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.m { font-family: var(--mono); font-size: 12.5px; color: var(--accent-2); white-space: nowrap; }
+
+  /* ---------- footer ---------- */
+  footer {
+    border-top: 1px solid var(--line);
+    padding-block: 34px 46px;
+    color: var(--text-3); font-size: 13.5px;
+  }
+  .frow { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; justify-content: space-between; }
+  footer a { text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap hero-inner">
+    <img class="mark" src="./icon.png" alt="">
+    <h1>OTel Monitor</h1>
+    <p class="tagline">Claude Code 가 내보내는 텔레메트리를 눈으로 확인합니다.</p>
+    <p class="sub">macOS 13+ · Universal (Intel &amp; Apple Silicon) · 무료 · 오픈소스</p>
+
+    <div class="cta">
+      <a class="btn btn-primary" id="dl" href="https://github.com/Seungwoo321/otel-monitor/releases/latest">
+        ↓ macOS 다운로드
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/Seungwoo321/otel-monitor">GitHub</a>
+    </div>
+
+    <div class="meta">
+      <span><b>v0.1.0</b></span>
+      <span>서명 · 공증 완료</span>
+      <span>10.6 MB</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap shot">
+  <img src="./screenshot.png" alt="OTel Monitor 화면 — 수신 스트림, 통계, 인스펙터">
+</div>
+
+<div class="wrap">
+
+  <section>
+    <h2>내보내는 걸 확인할 방법이 없었다</h2>
+    <p class="lede">
+      조직에서 AI 거버넌스 목적으로 Claude Code 의 텔레메트리 수집을 켜는 경우가 늘고 있습니다.
+      문서상으로는 숫자 집계만 나가지만, <b>지금 이 순간에도 그런지</b> 확인할 방법이 없습니다.
+    </p>
+
+    <div class="facts">
+      <div class="fact">
+        <span class="ico">1</span>
+        <p>전송 성공·실패 <b>로그가 디스크에 남지 않습니다.</b> 공식 문서에 로그 경로 자체가 없습니다.</p>
+      </div>
+      <div class="fact">
+        <span class="ico">2</span>
+        <p>실패는 <code>claude --debug</code> 의 <code>[3P telemetry]</code> 줄로만 드러납니다 —
+           <b>평소엔 조용히 실패합니다.</b></p>
+      </div>
+      <div class="fact">
+        <span class="ico">3</span>
+        <p>나중에 설정에 키가 추가돼 <b>프롬프트 원문까지 나가게 돼도</b> 알아챌 방법이 없습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>중간에 세워두고 들여다봅니다</h2>
+    <p class="lede">
+      투명 프록시입니다. 로컬에서 OTLP 를 받아 기록하고, 원래 수집 서버로 바이트를 그대로 전달합니다.
+      수집은 정상적으로 유지되면서 내용만 볼 수 있습니다.
+    </p>
+
+    <div class="flow">Claude Code
+    │  <span class="dim">OTLP/HTTP (protobuf)</span>
+    ▼
+<span class="hi">OTel Monitor  :4319</span>     <span class="dim">← 디코딩 · 기록 · 유출 감지</span>
+    │  <span class="dim">원본 그대로 릴레이</span>
+    ▼
+원래 수집 서버 <span class="dim">(선택 — 비워두면 로컬 전용 뷰어)</span></div>
+  </section>
+
+  <section>
+    <h2>기능</h2>
+    <div class="grid">
+      <div class="card alert">
+        <h3><span class="dot"></span>내용 유출 감지</h3>
+        <p>프롬프트·응답 원문이나 도구 파라미터가 페이로드에 나타나면 즉시 경고합니다.
+           로그 신호가 켜진 것도 잡아냅니다.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>실시간 수신 스트림</h3>
+        <p>요청 하나하나를 시각·크기·메트릭명·응답과 함께 보여줍니다.
+           선택하면 전체 속성을 펼쳐 봅니다.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>개인 식별 정보 표시</h3>
+        <p><code>user.email</code>·<code>organization.id</code> 같은 식별 속성을
+           따로 색으로 구분해 드러냅니다.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>누적 통계와 차트</h3>
+        <p>토큰·비용·커밋·코드 변경·활동 시간을 집계하고 시계열로 그립니다.
+           cumulative 누계를 정확히 처리합니다.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>설정 진단</h3>
+        <p><code>settings.json</code> 을 직접 읽어 내용 노출 키 6종이
+           켜져 있는지 확인해 줍니다.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>내보내기</h3>
+        <p>수집한 캡처를 JSON·CSV 로 저장합니다.
+           데이터는 메모리에만 있고 외부로 나가지 않습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>시작하기</h2>
+    <ol class="steps">
+      <li>
+        <div>
+          <div class="t">앱 설치</div>
+          <div class="d">DMG 를 받아 <code>Applications</code> 로 옮깁니다. 공증돼 있어 경고 없이 열립니다.</div>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="t">Claude Code 설정</div>
+          <div class="d"><code>~/.claude/settings.json</code> 의 <code>env</code> 에 아래를 넣습니다.</div>
+          <pre id="snip"><button class="copy" type="button" data-target="snip">복사</button><span class="k">"CLAUDE_CODE_ENABLE_TELEMETRY"</span>: <span class="v">"1"</span>,
+<span class="k">"OTEL_METRICS_EXPORTER"</span>: <span class="v">"otlp"</span>,
+<span class="k">"OTEL_EXPORTER_OTLP_PROTOCOL"</span>: <span class="v">"http/protobuf"</span>,
+<span class="k">"OTEL_EXPORTER_OTLP_ENDPOINT"</span>: <span class="v">"http://localhost:4319"</span></pre>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="t">새 세션 시작</div>
+          <div class="d">새 터미널에서 <code>claude</code> 를 실행합니다. 최대 1분 뒤 첫 전송이 도착합니다.</div>
+        </div>
+      </li>
+    </ol>
+
+    <div class="note">
+      이미 수집 서버를 쓰고 있다면 그 주소를 앱 설정의 <b>전달할 서버 주소</b> 에 넣으세요.
+      받은 내용을 그대로 넘기므로 기존 수집이 끊기지 않습니다.
+      다만 <b>앱을 꺼두면 그 구간은 수집 서버에 도달하지 않습니다.</b>
+    </div>
+  </section>
+
+  <section>
+    <h2>무엇이 잡히나</h2>
+    <p class="lede">Claude Code 가 내보내는 메트릭은 8종이 전부입니다. 전부 숫자입니다.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>메트릭</th><th>의미</th></tr></thead>
+        <tbody>
+          <tr><td class="m">session.count</td><td>세션 시작 횟수</td></tr>
+          <tr><td class="m">token.usage</td><td>토큰 (input / output / cacheRead / cacheCreation)</td></tr>
+          <tr><td class="m">cost.usage</td><td>비용 (USD)</td></tr>
+          <tr><td class="m">lines_of_code.count</td><td>수정한 줄 수 (added / removed)</td></tr>
+          <tr><td class="m">commit.count</td><td>커밋 개수</td></tr>
+          <tr><td class="m">pull_request.count</td><td>PR 개수</td></tr>
+          <tr><td class="m">code_edit_tool.decision</td><td>편집 권한 승인 · 거절</td></tr>
+          <tr><td class="m">active_time.total</td><td>실제 활동 시간 (초)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      숫자뿐이고 대화 내용은 없습니다. 다만 로그인 상태면
+      <code>user.email</code> 과 <code>organization.id</code> 가 함께 붙습니다 —
+      익명 통계가 아니라 <b>개인 단위로 식별되는 수집</b>이라는 뜻입니다.
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="wrap frow">
+    <span>MIT License · © 2026 Seungwoo Lee</span>
+    <span>
+      <a href="https://github.com/Seungwoo321/otel-monitor">GitHub</a> ·
+      <a href="https://github.com/Seungwoo321/otel-monitor/releases">릴리즈</a> ·
+      <a href="https://github.com/Seungwoo321/otel-monitor/issues">이슈</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var pre = document.getElementById(b.dataset.target)
+      var text = pre.innerText.replace(/^복사\n?/, '')
+      navigator.clipboard.writeText(text).then(function () {
+        b.textContent = '복사됨'
+        setTimeout(function () { b.textContent = '복사' }, 1500)
+      }).catch(function () {
+        b.textContent = '실패'
+        setTimeout(function () { b.textContent = '복사' }, 1500)
+      })
+    })
+  })
+</script>
+
+</body>
+</html>

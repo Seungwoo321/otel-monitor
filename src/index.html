@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OTel Monitor</title>
+<style>
+  :root {
+    --bg:        #0f1216;
+    --panel:     #161a20;
+    --panel-2:   #1c2129;
+    --line:      #262c35;
+    --line-2:    #333b46;
+    --text:      #e8ebef;
+    --text-2:    #a8b0bc;
+    --text-3:    #6f7885;
+
+    --accent:    #35b5ac;
+    --accent-dim:#1d4f4c;
+    --ok:        #4ea86a;
+    --warn:      #d19a4a;
+    --danger:    #d4604f;
+
+    --leak-bg:   #3a1f1b;
+    --leak-fg:   #f0b5aa;
+    --leak-line: #542b25;
+    --leak-strong: #ffd9d1;
+
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  }
+
+  /* 라이트 테마 — 토큰만 교체한다 (컴포넌트 CSS 는 손대지 않음) */
+  :root[data-theme="light"] {
+    --bg:        #f7f8f9;
+    --panel:     #ffffff;
+    --panel-2:   #eef0f2;
+    --line:      #e0e3e7;
+    --line-2:    #c9ced5;
+    --text:      #16181d;
+    --text-2:    #454a54;
+    --text-3:    #767e8a;
+
+    --accent:    #0f7a7a;
+    --accent-dim:#d9eceb;
+    --ok:        #2f7d4f;
+    --warn:      #8a5a2b;
+    --danger:    #b8412f;
+    --leak-bg:   #fbeae7;
+    --leak-fg:   #8c3325;
+    --leak-line: #eccdc7;
+    --leak-strong: #6d2418;
+}
+  /* 시스템 설정을 따르는 상태(스탬프 없음)에서 라이트 OS 면 라이트로 */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]):not([data-theme="light"]) {
+      --bg:        #f7f8f9;
+      --panel:     #ffffff;
+      --panel-2:   #eef0f2;
+      --line:      #e0e3e7;
+      --line-2:    #c9ced5;
+      --text:      #16181d;
+      --text-2:    #454a54;
+      --text-3:    #767e8a;
+      --accent:    #0f7a7a;
+      --accent-dim:#d9eceb;
+      --ok:        #2f7d4f;
+      --warn:      #8a5a2b;
+      --danger:    #b8412f;
+      --leak-bg:   #fbeae7;
+      --leak-fg:   #8c3325;
+      --leak-line: #eccdc7;
+      --leak-strong: #6d2418;
+}
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ---- top bar ---- */
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    flex: none;
+  }
+  .brand { font-weight: 600; font-size: 14px; letter-spacing: -.01em; }
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px;
+    padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--line-2); color: var(--text-2);
+  }
+  .status::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text-3);
+  }
+  .status.on  { color: var(--accent); border-color: var(--accent-dim); }
+  .status.on::before  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .status.err { color: var(--danger); border-color: var(--leak-line); }
+  .status.err::before { background: var(--danger); }
+  .spacer { flex: 1; }
+
+  button {
+    font-family: inherit; font-size: 12px;
+    background: var(--panel-2); color: var(--text-2);
+    border: 1px solid var(--line-2); border-radius: 5px;
+    padding: 5px 11px; cursor: pointer;
+  }
+  button:hover { color: var(--text); border-color: var(--text-3); }
+  button.primary { background: var(--accent-dim); color: var(--accent); border-color: var(--accent-dim); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ---- leak banner ---- */
+  #leakBar {
+    display: none;
+    padding: 9px 16px;
+    background: var(--leak-bg); color: var(--leak-fg);
+    border-bottom: 1px solid var(--leak-line);
+    font-size: 12.5px;
+    flex: none;
+  }
+  #leakBar.show { display: block; }
+  #leakBar b { color: var(--leak-strong); }
+
+  /* ---- stats strip ---- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border-bottom: 1px solid var(--line);
+    flex: none;
+  }
+  .stat { background: var(--panel); padding: 9px 13px; }
+  .stat .k {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: .07em; text-transform: uppercase;
+    color: var(--text-3); margin-bottom: 3px;
+  }
+  .stat .v {
+    font-family: var(--mono); font-size: 16px; font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .v.accent { color: var(--accent); }
+  .stat .v.warn   { color: var(--warn); }
+  .stat .v.danger { color: var(--danger); }
+
+  /* ---- main split ---- */
+  main { flex: 1; display: grid; grid-template-columns: 1fr 5px var(--side-w, 380px); overflow: hidden; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } #side, #splitter { display: none; } }
+
+  .col { display: flex; flex-direction: column; overflow: hidden; }
+
+  #splitter {
+    cursor: col-resize; background: var(--line);
+    position: relative; user-select: none;
+  }
+  #splitter::after {
+    content: ""; position: absolute; inset: 0 -3px;
+  }
+  #splitter:hover, #splitter.dragging { background: var(--accent); }
+  body.resizing { cursor: col-resize; user-select: none; }
+  #side { border-left: 1px solid var(--line); background: var(--panel); }
+
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); flex: none; background: var(--panel); }
+  .tab {
+    padding: 8px 14px; font-size: 12px; cursor: pointer;
+    color: var(--text-3); border-bottom: 2px solid transparent;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover { color: var(--text-2); }
+
+  .scroll { overflow-y: auto; flex: 1; }
+
+  /* ---- capture rows ---- */
+  .row {
+    display: grid;
+    grid-template-columns: 62px 66px 62px 1fr 78px;
+    gap: 10px; align-items: center;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    font-family: var(--mono); font-size: 11.5px;
+  }
+  .row:hover { background: var(--panel-2); }
+  .row.sel { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+  .row .t { color: var(--text-3); }
+  .row .sig {
+    font-size: 10px; padding: 2px 6px; border-radius: 3px; text-align: center;
+    border: 1px solid var(--line-2); color: var(--text-2);
+  }
+  .row .sig.metrics { color: var(--accent); border-color: var(--accent-dim); }
+  .row .sig.logs    { color: var(--danger); border-color: var(--leak-line); background: var(--leak-bg); }
+  .row .sig.traces  { color: var(--warn); border-color: var(--line-2); }
+  .row .by { color: var(--text-3); text-align: right; }
+  .row .names { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .fw { text-align: right; font-size: 10.5px; }
+  .fw.ok { color: var(--ok); } .fw.fail { color: var(--danger); } .fw.off { color: var(--text-3); }
+
+  .empty { padding: 40px 20px; text-align: center; color: var(--text-3); font-size: 12.5px; line-height: 1.8; }
+  .empty code { font-family: var(--mono); color: var(--accent); font-size: 11.5px; }
+
+  /* ---- inspector ---- */
+  .sec { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .sec h3 {
+    margin: 0 0 9px; font-family: var(--mono);
+    font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--text-3); font-weight: 600;
+  }
+  .kv { display: grid; grid-template-columns: 128px 1fr; gap: 3px 10px; font-family: var(--mono); font-size: 11.5px; }
+  .kv dt { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
+  .kv dd { margin: 0; color: var(--text); word-break: break-all; }
+  .kv dd.pii { color: var(--warn); }
+  .mrow { display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 11.5px; padding: 3px 0; }
+  .mrow .n { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .v { color: var(--accent); font-variant-numeric: tabular-nums; flex: none; }
+
+  /* ---- chart ---- */
+  .chartbox { padding: 12px 14px 4px; border-bottom: 1px solid var(--line); }
+  svg { display: block; width: 100%; height: auto; }
+
+  /* ---- config ---- */
+  .field { margin-bottom: 11px; }
+  .field label {
+    display: block; font-family: var(--mono); font-size: 10px;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px;
+  }
+  .field label .sub { text-transform: none; letter-spacing: 0; opacity: .8; }
+  .field input[type=text], .field input[type=number] {
+    width: 100%; font-family: var(--mono); font-size: 12px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 8px;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  .chk { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); }
+  .hint { font-size: 11.5px; color: var(--text-3); line-height: 1.65; margin-top: 7px; }
+  .hint code { font-family: var(--mono); color: var(--accent); font-size: 11px; }
+  pre.snip {
+    font-family: var(--mono); font-size: 11px; line-height: 1.6;
+    background: var(--bg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 10px; overflow-x: auto; color: var(--text-2);
+    margin: 8px 0 0;
+  }
+  .diag { font-family: var(--mono); font-size: 11.5px; }
+  .diag .ok   { color: var(--ok); }
+  .diag .bad  { color: var(--danger); }
+  .diag .none { color: var(--text-3); }
+
+  .segmented { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; }
+  .segmented button {
+    border: none; border-radius: 0; padding: 6px 14px;
+    background: transparent; color: var(--text-3);
+    border-right: 1px solid var(--line-2);
+  }
+  .segmented button:last-child { border-right: none; }
+  .segmented button.on { background: var(--accent-dim); color: var(--accent); }
+  .segmented button:hover:not(.on) { color: var(--text-2); background: var(--panel-2); }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">OTel Monitor</span>
+  <span class="status" id="srvStatus">시작 중…</span>
+  <span class="spacer"></span>
+  <button id="btnClear">비우기</button>
+  <button id="btnJson">JSON</button>
+  <button id="btnCsv">CSV</button>
+</header>
+
+<div id="leakBar"></div>
+
+<div class="stats" id="stats"></div>
+
+<main>
+  <div class="col">
+    <div class="tabs">
+      <div class="tab active" data-pane="stream">수신 스트림</div>
+      <div class="tab" data-pane="chart">차트</div>
+      <div class="tab" data-pane="setup">설정</div>
+    </div>
+
+    <div class="scroll" id="paneStream">
+      <div class="empty" id="streamEmpty">
+        아직 받은 트래픽이 없습니다.<br><br>
+        설정 탭에서 Claude Code 주소를 <code>http://localhost:4319</code> 로 바꾸고<br>
+        새 터미널에서 세션을 시작하세요. 최대 1분 뒤 첫 전송이 도착합니다.
+      </div>
+      <div id="rows"></div>
+    </div>
+
+    <div class="scroll" id="paneChart" hidden>
+      <div class="chartbox">
+        <h3 style="margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)">누적 토큰</h3>
+        <svg id="chartTokens" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="chartbox">
+        <h3 style="margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)">누적 비용 (USD)</h3>
+        <svg id="chartCost" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="sec">
+        <h3>토큰 내역</h3>
+        <div id="tokenBreak"></div>
+      </div>
+    </div>
+
+    <div class="scroll" id="paneSetup" hidden>
+      <div class="sec">
+        <h3>프록시</h3>
+        <div class="field">
+          <label for="cfgPort">수신 포트<span class="sub"> · 변경하면 앱을 다시 실행하세요</span></label>
+          <input type="number" id="cfgPort" value="4319">
+        </div>
+        <div class="field">
+          <label for="cfgUp">전달할 서버 주소<span class="sub"> · 비우면 전달하지 않습니다</span></label>
+          <input type="text" id="cfgUp" placeholder="https://collector.example.com:4318/otlp">
+        </div>
+        <div class="field">
+          <label class="chk"><input type="checkbox" id="cfgFwd"> 받은 트래픽을 그대로 전달</label>
+          <div class="hint">끄면 이 앱에서만 확인하고 원래 수집 서버에는 도달하지 않습니다.</div>
+        </div>
+        <button class="primary" id="btnSaveCfg">저장</button>
+      </div>
+
+      <div class="sec">
+        <h3>테마</h3>
+        <div class="segmented" id="themeSeg">
+          <button data-theme="system" class="on">시스템</button>
+          <button data-theme="light">라이트</button>
+          <button data-theme="dark">다크</button>
+        </div>
+        <div class="hint">이 기기에만 저장됩니다.</div>
+      </div>
+
+      <div class="sec">
+        <h3>Claude Code 연결</h3>
+        <div class="hint">
+          Claude Code 설정 파일(<code>~/.claude/settings.json</code>)의
+          <code>env</code> 에 아래를 넣으면 모든 트래픽이 이 앱을 거칩니다.
+        </div>
+        <pre class="snip">"CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+"OTEL_METRICS_EXPORTER": "otlp",
+"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4319"</pre>
+        <div class="hint">
+          원래 수집 서버로 계속 보내려면 그 주소를 위 <b>전달할 서버 주소</b> 에 넣으세요.
+          이 앱이 받은 내용을 그대로 넘깁니다.
+        </div>
+        <div class="hint">
+          이미 실행 중인 세션에는 반영되지 않습니다. 새 터미널에서 <code>claude</code> 를 실행하세요.
+        </div>
+      </div>
+
+      <div class="sec">
+        <h3>설정 진단</h3>
+        <div class="field">
+          <input type="text" id="diagPath" value="~/.claude/settings.json">
+        </div>
+        <button id="btnDiag">읽기</button>
+        <div id="diagOut" class="diag" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="splitter" role="separator" aria-orientation="vertical" title="드래그해서 너비 조정"></div>
+
+  <div class="col" id="side">
+    <div class="tabs"><div class="tab active" style="cursor:default">인스펙터</div></div>
+    <div class="scroll" id="inspector">
+      <div class="empty">왼쪽에서 항목을 선택하세요.</div>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="./main.js"></script>
+</body>
+</html>

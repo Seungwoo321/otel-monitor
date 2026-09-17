@@ -1,0 +1,31 @@
+[package]
+name = "otel-monitor"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "otel_monitor_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+hyper = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip"] }
+prost = "0.13"
+opentelemetry-proto = { version = "0.27", features = ["gen-tonic-messages", "metrics", "logs", "trace"] }
+flate2 = "1"
+chrono = { version = "0.4", features = ["serde"] }
+parking_lot = "0.12"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

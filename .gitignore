@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-release/
+src-tauri/target/
+.local/
+*.log
+.DS_Store
+.env
+.env.*
+*.p8
