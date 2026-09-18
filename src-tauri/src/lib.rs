@@ -260,6 +260,14 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                // 창이 없으면 Dock 에서도 내려 메뉴바 앱처럼 동작하게 한다.
+                #[cfg(target_os = "macos")]
+                {
+                    use tauri::Manager;
+                    let _ = window
+                        .app_handle()
+                        .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                }
             }
         })
         .run(tauri::generate_context!())

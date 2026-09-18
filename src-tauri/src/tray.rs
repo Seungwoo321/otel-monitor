@@ -112,6 +112,11 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, state: Arc<AppState>) -> tauri::Res
 }
 
 fn open_window<R: Runtime>(app: &AppHandle<R>) {
+    // macOS 는 창을 모두 숨기면 앱이 Accessory 로 내려가, show() 만으로는 앞으로 나오지 않는다.
+    // 다시 Regular 로 올린 뒤 보여줘야 한다.
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();

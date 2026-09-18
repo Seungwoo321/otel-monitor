@@ -81,8 +81,9 @@
     font-size: clamp(16px, 2.4vw, 19px);
     color: var(--text-2);
     margin: 0 auto 10px;
-    max-width: 30ch;
+    max-width: 34ch;
     text-wrap: balance;
+    word-break: keep-all;   /* 한국어 어절 중간에서 끊지 않는다 */
   }
   .sub {
     font-family: var(--mono);
@@ -127,7 +128,7 @@
     font-size: 27px; font-weight: 700; letter-spacing: -.02em;
     margin: 0 0 12px; text-wrap: balance;
   }
-  .lede { color: var(--text-2); margin: 0 0 30px; max-width: 62ch; }
+  .lede { color: var(--text-2); margin: 0 0 30px; max-width: 62ch; word-break: keep-all; }
   p { margin: 0 0 16px; }
 
   code {
@@ -146,7 +147,7 @@
     font-family: var(--mono); font-size: 12px; font-weight: 600;
     margin-top: 2px;
   }
-  .fact p { margin: 0; font-size: 14.5px; line-height: 1.65; }
+  .fact p { margin: 0; font-size: 14.5px; line-height: 1.65; word-break: keep-all; }
   .fact b { color: var(--text); }
 
   /* ---------- flow ---------- */
@@ -171,7 +172,7 @@
   }
   .card h3 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
   .card.alert h3 .dot { background: var(--danger); }
-  .card p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.68; }
+  .card p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.68; word-break: keep-all; }
 
   /* ---------- steps ---------- */
   ol.steps { counter-reset: s; list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
@@ -187,7 +188,7 @@
     font-family: var(--mono); font-size: 13px; font-weight: 600;
   }
   ol.steps .t { font-weight: 600; margin-bottom: 4px; }
-  ol.steps .d { color: var(--text-2); font-size: 14.5px; }
+  ol.steps .d { color: var(--text-2); font-size: 14.5px; word-break: keep-all; }
 
   pre {
     position: relative;
@@ -213,6 +214,7 @@
     border: 1px solid var(--line); border-left: 3px solid var(--warn);
     border-radius: 7px; background: var(--bg-2);
     font-size: 14px; color: var(--text-2); line-height: 1.68;
+    word-break: keep-all;
   }
 
   /* ---------- metrics table ---------- */

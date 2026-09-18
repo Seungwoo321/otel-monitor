@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "OTel Monitor",
         "width": 1180,
         "height": 800,
