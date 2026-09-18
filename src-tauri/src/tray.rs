@@ -76,8 +76,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, state: Arc<AppState>) -> tauri::Res
     menu.append(&quit)?;
 
     let st = state.clone();
+    // 메뉴바 전용 아이콘 — 배경 없는 단색 실루엣이라야 템플릿 반전이 자연스럽다.
+    // 앱 아이콘(라운드 사각형 배경)을 그대로 쓰면 메뉴바에서 답답해 보인다.
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray@2x.png"))?;
+
     TrayIconBuilder::with_id("main")
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(icon)
         .icon_as_template(true) // 다크/라이트 메뉴바에 맞춰 자동 반전
         .title(title_for(&st))
         .tooltip("OTel Monitor")
