@@ -33,13 +33,15 @@ fn snapshot(app: State<'_, Arc<AppState>>) -> Snapshot {
 #[tauri::command]
 fn set_config(app: State<'_, Arc<AppState>>, cfg: Config) -> Config {
     let mut c = app.cfg.write();
-    // 포트는 재시작해야 반영되므로 현재 구동 중이면 유지
-    if !*app.running.read() {
-        c.listen_port = cfg.listen_port;
-    }
+    // 포트 값 자체는 저장한다. 이미 떠 있는 서버에 즉시 적용되지 않을 뿐,
+    // 다음 실행부터 반영된다 (저장을 막으면 사용자가 바꾼 값이 사라진다).
+    c.listen_port = cfg.listen_port;
     c.upstream = cfg.upstream;
     c.forward_enabled = cfg.forward_enabled;
-    c.clone()
+    let out = c.clone();
+    drop(c);
+    app.save_config();   // 앱을 껐다 켜도 유지되도록 디스크에 남긴다
+    out
 }
 
 #[tauri::command]

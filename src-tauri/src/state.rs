@@ -25,6 +25,38 @@ pub struct Config {
     pub forward_enabled: bool,
 }
 
+impl Config {
+    /// 설정 파일 경로. 기록(history.json)과 같은 폴더에 둔다.
+    fn path() -> std::path::PathBuf {
+        let base = std::env::var("HOME")
+            .map(|h| {
+                std::path::PathBuf::from(h)
+                    .join("Library/Application Support/dev.seungwoo.otel-monitor")
+            })
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let _ = std::fs::create_dir_all(&base);
+        base.join("config.json")
+    }
+
+    fn load() -> Self {
+        std::fs::read_to_string(Self::path())
+            .ok()
+            .and_then(|s| serde_json::from_str::<Config>(&s).ok())
+            .unwrap_or_default()
+    }
+
+    /// 원자적 교체 — 쓰다 죽어도 기존 파일이 깨지지 않는다.
+    fn save(&self) {
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            let p = Self::path();
+            let tmp = p.with_extension("json.tmp");
+            if std::fs::write(&tmp, json).is_ok() {
+                let _ = std::fs::rename(&tmp, &p);
+            }
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -89,7 +121,7 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            cfg: RwLock::new(Config::default()),
+            cfg: RwLock::new(Config::load()),
             latest: RwLock::new(std::collections::HashMap::new()),
             captures: RwLock::new(Vec::new()),
             totals: RwLock::new(Totals::default()),
@@ -103,6 +135,10 @@ impl AppState {
                 .unwrap_or_default(),
             handle: RwLock::new(None),
         })
+    }
+
+    pub fn save_config(&self) {
+        self.cfg.read().save();
     }
 
     pub fn set_handle(&self, h: AppHandle) {

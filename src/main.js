@@ -1164,12 +1164,39 @@ listen('otlp-capture', (e) => {
   })
 })
 
+function paintStatus (running, port, error) {
+  const s = $('#srvStatus')
+  if (running) {
+    s.className = 'status on'
+    s.textContent = `수신 중 :${port}`
+    s.title = ''
+  } else {
+    s.className = 'status err'
+    s.textContent = `포트 ${port} 실패`
+    s.title = error || '다른 프로그램이 이 포트를 쓰고 있을 수 있습니다'
+  }
+}
+
 listen('server-status', (e) => {
   const p = e.payload
-  const s = $('#srvStatus')
-  if (p.running) { s.className = 'status on'; s.textContent = `수신 중 :${p.port}` }
-  else { s.className = 'status err'; s.textContent = `포트 ${p.port} 실패` }
+  paintStatus(p.running, p.port, p.error)
 })
+
+// 서버는 웹뷰가 뜨기 전에 바인딩될 수 있어 이벤트를 놓친다.
+// 확정될 때까지 잠깐 되물어 "시작 중…" 에서 멈추지 않게 한다.
+async function pollStatus () {
+  for (let i = 0; i < 20; i++) {
+    try {
+      const s = await invoke('snapshot')
+      if (s.running) { paintStatus(true, s.cfg.listen_port); return }
+    } catch (e) { /* 아직 준비 전 */ }
+    await new Promise(r => setTimeout(r, 250))
+  }
+  try {
+    const s = await invoke('snapshot')
+    paintStatus(s.running, s.cfg.listen_port)
+  } catch (e) { /* 그래도 실패하면 표시를 건드리지 않는다 */ }
+}
 
 initTheme()
 initSplitter()
@@ -1190,7 +1217,6 @@ invoke('snapshot').then(s => {
   invoke('history_path').then(p => {
     $('#histPath').textContent = p.replace(/^\/Users\/[^/]+/, '~')
   }).catch(() => {})
-  const st = $('#srvStatus')
-  if (s.running) { st.className = 'status on'; st.textContent = `수신 중 :${s.cfg.listen_port}` }
+  pollStatus()
   renderAll()
 })
