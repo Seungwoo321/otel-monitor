@@ -4,11 +4,13 @@
 
 # OTel Monitor
 
-**Claude Code 의 텔레메트리를 눈으로 확인하는 macOS 앱**
+**See what Claude Code's telemetry actually sends — a macOS app**
 
-[![macOS](https://img.shields.io/badge/macOS-13%2B-black)](#설치)
-[![Universal](https://img.shields.io/badge/build-universal-black)](#설치)
+[![macOS](https://img.shields.io/badge/macOS-13%2B-black)](#install)
+[![Universal](https://img.shields.io/badge/build-universal-black)](#install)
 [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+
+[한국어](README.ko.md) · **English**
 
 <img src="assets/banner.png" width="100%" alt="">
 
@@ -16,84 +18,98 @@
 
 ---
 
-## 왜 만들었나
+## Why
 
-Claude Code 의 OpenTelemetry 를 켜면 사용량 메트릭이 주기적으로 수집 서버로 나간다.
-숫자만 나가고 프롬프트나 코드는 안 나가는데, 정작 그걸 확인할 방법이 없었다.
+Turn on Claude Code's OpenTelemetry and usage metrics start flowing to a collector on
+a timer. Only numbers go out — no prompts, no code — but there was no way to confirm that.
 
-- 전송 성공·실패가 로컬에 안 남는다
-- 실패는 `claude --debug` 를 켜야 보인다
-- 설정을 바꿔도 뭐가 달라졌는지 알 수 없다
+- Nothing about the sends lands on disk, success or failure
+- Failures only surface with `claude --debug`
+- Change a setting and you can't tell what actually changed
 
-그래서 중간에 하나 세워두고 지나가는 걸 들여다보기로 했다.
+So I put something in the middle and watched what goes past.
 
-## 어떻게 동작하나
+## How it works
 
-로컬에서 OTLP 를 받아 풀어본 뒤, 수집 서버로 받은 바이트를 그대로 넘긴다.
-기존 수집은 그대로 두고 내용만 본다.
+It receives OTLP locally, decodes it, then passes the bytes through to whatever collector
+you configure. Your existing collection keeps working; you just get to see inside.
 
 ```
 Claude Code
     │  OTLP/HTTP (protobuf)
     ▼
-OTel Monitor  :4319     ← 디코딩 · 기록 · 유출 감지
-    │  원본 그대로 릴레이
+OTel Monitor  :4319     ← decode · record · leak detection
+    │  relayed as-is
     ▼
-원래 수집 서버 (선택)
+your collector (optional)
 ```
 
-헤더까지 그대로 넘기므로 수집 서버 입장에서는 달라지는 게 없다.
-전달할 서버를 비워두면 **로컬 전용 뷰어**로만 쓸 수도 있다.
+Headers pass through untouched, so the collector sees no difference.
+Leave the forward address empty and it becomes a **local-only viewer**.
 
-## 화면
+## Screenshot
 
 <div align="center">
 <img src="assets/screenshot.png" width="100%" alt="">
 </div>
 
-| 영역 | 내용 |
+| Area | What it shows |
 |---|---|
-| **상단 통계** | 받은 요청 · 누적 용량 · 토큰 · 비용 · 세션 · 커밋/PR · 코드 변경 · 활동 시간 · 전달 실패 · 내용 유출. 창 폭에 맞춰 열 수가 바뀐다 |
-| **필터** | `user.email`·`unit`·`model` 등 원하는 속성으로 스트림·통계·차트를 한 번에 거른다 |
-| **수신 스트림** | 요청 하나하나를 시각 · 신호 종류 · 크기 · 메트릭명 · 응답과 함께 나열 |
-| **인스펙터** | 선택한 요청의 전체 속성. 개인 식별 정보는 색으로 구분. 경계선을 드래그해 너비 조정 |
-| **차트** | 토큰(input/output) · 비용 · 활동 시간 · 코드 변경. 호버하면 그 지점의 값을 모두 보여준다. 이번 실행 / 7 · 30 · 90일 전환 |
-| **설정** | 포트 · 전달 서버 · 전달 on/off, 테마, 기록 보관 기간, 업데이트 확인, 설정 파일 진단 |
+| **Stats** | Requests · bytes · tokens · cost · sessions · commits/PRs · code changes · active time · forward failures · content leaks. Column count adapts to window width |
+| **Filters** | Filter the stream, stats, and charts together by any attribute — `user.email`, `unit`, `model`, and so on |
+| **Stream** | Every request with time, signal, size, metric names, and response |
+| **Inspector** | Full attributes of the selected request. Identifying fields are color-coded. Drag the divider to resize |
+| **Charts** | Tokens (input/output), cost, active time, code changes. Hover to read every series at that point. This run / 7 / 30 / 90 days |
+| **Settings** | Port · forward address · forward on/off, retention, export, update check, config diagnostics |
+| **Menu bar** | Stays in the menu bar after you close the window. Right-click for a live summary |
 
-### 내용 유출 감지
+### Leak detection
 
-아래 항목이 페이로드에 섞여 들어오면 상단에 배너가 뜬다.
+A banner appears when any of these show up in a payload:
 
-- **로그(이벤트) 신호 자체** — `OTEL_LOGS_EXPORTER` 가 켜졌다는 뜻이다
-- **내용 필드** — `prompt`, `response`, `tool_parameters`, `error`, `api_request_body` 등이
-  비어 있지 않고 `<REDACTED>` 도 아닌 경우
+- **The logs signal itself** — meaning `OTEL_LOGS_EXPORTER` got turned on
+- **Content fields** — `prompt`, `response`, `tool_parameters`, `error`, `api_request_body`
+  with a real value (not `<REDACTED>`)
 
-설정 탭에서 `settings.json` 을 읽어 내용 노출 키 6종이 켜져 있는지도 확인할 수 있다.
+Settings can also read your `settings.json` and tell you whether any of the six
+content-exposure keys are enabled.
 
-### 날짜별 기록
+### Daily history
 
-날짜·계정별 사용량 합계를 남긴다. 7·30·90일 추이를 볼 수 있다.
-요청 원문은 저장하지 않는다. 볼 일도 없는 데이터를 쌓아둘 이유가 없어서다.
+Daily totals per account, so you can see 7/30/90-day trends.
+Request bodies are never stored — there's no reason to pile up data nobody reads.
 
 ```
 ~/Library/Application Support/dev.seungwoo.otel-monitor/history.json
 ```
 
-보관 기간은 기본 90일. 설정에서 바꿀 수 있고, 줄이면 그 자리에서 정리된다.
-전체 삭제 버튼도 있다. 1년을 써도 1MB가 안 된다.
+Retention defaults to 90 days, adjustable in settings; lowering it prunes immediately.
+There's a clear-all button too. A year of use stays under 1 MB.
 
-### 자동 업데이트
+### Auto-update
 
-새 버전이 나오면 알려준다. 확인을 눌러야 받는다.
+You get a notice when a new version ships. Nothing downloads until you confirm.
 
-## 설치
+### Menu bar
 
-[Releases](../../releases) 에서 `.dmg` 를 받아 앱을 `Applications` 로 옮긴다.
-Universal 빌드라 Intel · Apple Silicon 모두 동작한다 (macOS 13+).
+Close the window and the app stays in the menu bar, still receiving. Right-click the icon
+for current numbers; left-click toggles the window. Leak and forward-failure lines only
+appear when there's something to report.
 
-### Claude Code 연결
+### Stream follow
 
-설정 파일의 `env` 에 아래를 넣는다. 경로는 `CLAUDE_CONFIG_DIR` 에 따라 다르며 기본은 `~/.claude/settings.json` 이다 — 앱 설정 탭이 실제 경로를 찾아 준다.
+Like `tail -f` — new entries are selected automatically and the inspector follows along.
+Click a specific entry to stop; hit "최신으로" (Latest) to resume.
+
+## Install
+
+Grab the `.dmg` from [Releases](../../releases) and drag the app to `Applications`.
+Universal build, so Intel and Apple Silicon both work (macOS 13+).
+
+### Connect Claude Code
+
+Add this to the `env` block of your settings file. The path depends on `CLAUDE_CONFIG_DIR`
+and defaults to `~/.claude/settings.json` — the app's settings tab will find it for you.
 
 ```jsonc
 {
@@ -106,77 +122,84 @@ Universal 빌드라 Intel · Apple Silicon 모두 동작한다 (macOS 13+).
 }
 ```
 
-이미 수집 서버를 쓰고 있다면 그 주소를 앱 설정의 **전달할 서버 주소** 에 넣는다.
-앱이 받은 내용을 그대로 넘기므로 기존 수집은 그대로 유지된다.
+Already sending to a collector? Put its address in **forward address** and the app will
+relay everything through, leaving your collection intact.
 
-> 이미 실행 중인 세션에는 반영되지 않는다. 새 터미널에서 `claude` 를 띄워야 한다.
-> 첫 전송까지 최대 1분(기본 export 간격) 걸린다.
+> Running sessions won't pick this up. Start `claude` in a new terminal.
+> The first send takes up to a minute (default export interval).
 
-## 직접 빌드
+## Build it yourself
 
 ```bash
 pnpm install
-pnpm tauri dev      # 개발
-pnpm tauri build    # .app / .dmg
+pnpm tauri dev
+pnpm tauri build
 ```
 
-Rust 1.77+, Node 20+ 필요. 서명·공증 배포는 [docs/RELEASE-macos.md](docs/RELEASE-macos.md) 참조 —
-인증서와 비밀번호는 전부 환경변수로 읽고 저장소에는 넣지 않는다.
+Needs Rust 1.77+ and Node 20+. For signed and notarized releases see
+[docs/RELEASE-macos.md](docs/RELEASE-macos.md) — certificates and passwords are read from
+environment variables and never committed.
 
-## 잡히는 내용
+## What gets captured
 
-Claude Code 가 내보내는 메트릭은 8종이 전부다.
+Claude Code emits eight metrics. That's all of them.
 
-| 메트릭 | 의미 |
+| Metric | Meaning |
 |---|---|
-| `session.count` | 세션 시작 횟수 |
-| `lines_of_code.count` | 수정한 줄 수 (added/removed) |
-| `commit.count` · `pull_request.count` | 커밋 · PR 개수 |
-| `cost.usage` | 비용(USD) |
-| `token.usage` | 토큰 (input/output/cacheRead/cacheCreation) |
-| `code_edit_tool.decision` | 편집 권한 승인 · 거절 |
-| `active_time.total` | 실제 활동 시간(초) |
+| `session.count` | Sessions started |
+| `token.usage` | Tokens (input / output / cacheRead / cacheCreation) |
+| `cost.usage` | Cost in USD |
+| `lines_of_code.count` | Lines changed (added / removed) |
+| `commit.count` · `pull_request.count` | Commits and PRs |
+| `code_edit_tool.decision` | Edit permission accepted / rejected |
+| `active_time.total` | Active seconds |
 
-숫자뿐이고 대화 내용은 없다.
-다만 로그인 상태면 `user.email`·`organization.id` 가 같이 붙는다. 인스펙터에서 따로 표시된다.
+Numbers only — no conversation content. But when you're signed in,
+`user.email` and `organization.id` ride along. The inspector flags those separately.
 
-## 만들면서 알게 된 것
+## Things I learned building this
 
-- 헤드리스(`claude -p`)는 메트릭을 안 보낸다. 대화형 세션에서만 나간다. 이거 모르고 한참 헤맸다.
-- Claude Code 는 매번 "세션 시작 이후 누계"를 통째로 다시 보낸다(cumulative).
-  그래서 값을 더하면 안 되고 최신값으로 덮어써야 한다. 처음에 `+=` 로 짰다가
-  커밋 수가 두 배로 찍히는 걸 보고 알았다.
-- `OTEL_METRICS_EXPORTER` 는 `console,otlp` 처럼 쉼표로 여러 개를 줄 수 있다.
-  다만 콘솔 출력이 어디로 가는지는 문서에 안 나온다.
-- Claude 설정 폴더의 `telemetry/` 는 Anthropic 자체 분석용(`1p_failed_events`)이라
-  여기서 다루는 OTel 과 무관하다. 이름 때문에 헷갈린다.
+- **Headless (`claude -p`) sends nothing.** Metrics only export from interactive sessions.
+  Cost me a while to figure out.
+- **Claude Code resends the running total every time** (cumulative temporality), so you
+  overwrite rather than add. I wrote `+=` first and watched commit counts double.
+- `OTEL_METRICS_EXPORTER` takes a comma-separated list like `console,otlp`,
+  but the docs never say where console output goes.
+- The `telemetry/` folder in your Claude config is Anthropic's own analytics
+  (`1p_failed_events`), unrelated to the OTel pipeline here. Easy to confuse.
+- **Tauri v2 ignores `TAURI_SIGNING_PRIVATE_KEY_PATH`** — it wants the key *contents* in
+  `TAURI_SIGNING_PRIVATE_KEY`.
+- **GitHub turns spaces in asset names into dots**, so `latest.json` URLs have to match
+  or the updater 404s silently.
 
-## 구조
+## Layout
 
 ```
 src-tauri/src/
-  otlp.rs     OTLP 수신 · protobuf 디코딩 · 유출 판정 · 라우팅
-  state.rs    캡처 버퍼 · 누적 집계(cumulative) · 전달
-  history.rs  날짜별 기록 저장 · 보관 기간 정리
-  lib.rs      Tauri 커맨드 · 서버 기동
+  otlp.rs     OTLP receive · protobuf decode · leak checks · routing
+  state.rs    capture buffer · cumulative aggregation · forwarding
+  history.rs  daily records · retention
+  tray.rs     menu bar icon and summary
+  lib.rs      Tauri commands · server startup
 src/
-  index.html  UI · 테마 토큰
-  main.js     렌더링 · SVG 차트 · 필터 · 리사이저
+  index.html  UI · theme tokens
+  main.js     rendering · SVG charts · filters · resizer
 scripts/
-  build-macos-release.sh   서명 · 공증 · staple
-  make-latest-json.sh      업데이터 매니페스트 생성
+  build-macos-release.sh   sign · notarize · staple
+  publish-release.sh       upload release · generate latest.json
 ```
 
-protobuf 는 `opentelemetry-proto` 크레이트로 제대로 디코딩한다.
-처음엔 바이너리에서 문자열만 긁어 쓰다가 값이 자꾸 어긋나서 갈아엎었다.
+Protobuf decoding goes through the `opentelemetry-proto` crate. I prototyped by scraping
+strings out of the binary first, but the values kept drifting, so I rewrote it.
 
-## 안 하는 것
+## What it doesn't do
 
-- **요청 원문을 저장하지 않는다.** 캡처는 메모리에만 있고(최대 500건) 앱을 끄면 사라진다.
-  디스크에 남는 건 날짜·계정별 합계와 유출 기록뿐이다. 원문이 필요하면 JSON/CSV 로 내보낸다.
-- 지나가는 내용을 바꾸지 않는다. 보는 도구지 막는 도구가 아니다.
-- 앱이 꺼져 있으면 그 구간은 전달되지 않는다. 중간에 끼워 넣는 이상 어쩔 수 없다.
+- **Never stores request bodies.** Captures live in memory (500 max) and vanish when the
+  app quits. Only daily per-account totals and leak records hit disk. Export to JSON/CSV
+  if you need the raw data.
+- **Never modifies what passes through.** This watches; it doesn't block.
+- **Nothing is forwarded while the app is closed.** Unavoidable when you sit in the middle.
 
-## 라이선스
+## License
 
 [MIT](LICENSE)

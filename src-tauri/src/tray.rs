@@ -63,9 +63,10 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> tauri::Result
     menu.append(&MenuItem::with_id(app, "show", "창 열기", true, None::<&str>)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
 
-    // 요약 줄은 클릭 대상이 아니라 표시용이라 비활성으로 둔다.
+    // 요약 줄은 활성으로 둔다 — macOS 는 비활성 항목을 흐리게 그려서,
+    // 정작 읽으라고 넣은 숫자가 안 보인다. 클릭하면 창을 연다.
     for (i, l) in summary_lines(state).iter().enumerate() {
-        menu.append(&MenuItem::with_id(app, format!("stat{i}"), l, false, None::<&str>)?)?;
+        menu.append(&MenuItem::with_id(app, format!("stat{i}"), l, true, None::<&str>)?)?;
     }
 
     menu.append(&PredefinedMenuItem::separator(app)?)?;
@@ -86,9 +87,9 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, state: Arc<AppState>) -> tauri::Res
         .menu(&menu)
         .show_menu_on_left_click(false) // 좌클릭은 창 토글, 우클릭이 메뉴
         .on_menu_event(move |app, event| match event.id().as_ref() {
-            "show" => open_window(app),
             "quit" => app.exit(0),
-            _ => {}
+            // "show" 와 요약 줄(stat*) 모두 창을 연다
+            _ => open_window(app),
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
