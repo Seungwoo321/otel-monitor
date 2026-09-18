@@ -704,6 +704,20 @@ function renderCharts () {
 
 }
 
+/* ---------- 차트 범위 ---------- */
+document.querySelectorAll('#rangeSeg button').forEach(b => {
+  b.addEventListener('click', async () => {
+    document.querySelectorAll('#rangeSeg button').forEach(x => x.classList.remove('on'))
+    b.classList.add('on')
+    range = b.dataset.range
+    // 이력 범위는 디스크 기록을 읽어야 한다
+    if (range !== 'session') {
+      try { hist = await invoke('history') } catch (e) { hist = null }
+    }
+    renderCharts()
+  })
+})
+
 /* ---------- 탭 ---------- */
 document.querySelectorAll('.tab[data-pane]').forEach(tab => {
   tab.addEventListener('click', () => {
